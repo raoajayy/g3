@@ -1,0 +1,15 @@
+[package]
+name = "arcus-admin-api"
+version = "0.1.0"
+edition = "2021"
+authors = ["Arcus Team"]
+description = "Arcus Admin Console API for policy and user management"
+
+[dependencies]
+warp = "0.3"
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+env_logger = "0.10"
+fastrand = "2.0"

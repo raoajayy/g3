@@ -1,0 +1,133 @@
+# G3ICAP Configuration following G3Proxy pattern
+# This example shows the proper configuration structure for G3ICAP
+
+# Runtime configuration
+runtime:
+  worker_threads: 4
+  max_blocking_threads: 8
+
+# Worker configuration  
+worker:
+  max_connections: 1000
+  connection_timeout: 30
+  request_timeout: 60
+
+# Logging configuration
+log:
+  level: "info"
+  format: "json"
+  structured: true
+  file: "/var/log/g3icap/g3icap.log"
+
+# Statistics configuration (following G3Proxy pattern)
+stat:
+  server: "127.0.0.1"
+  port: 8125
+  prefix: "g3icap"
+  emit_interval: 10
+  buffer_size: 1024
+  udp_enabled: true
+  tcp_enabled: false
+  tags:
+    daemon_group: "g3icap"
+    environment: "production"
+    version: "0.1.0"
+
+# Controller configuration
+controller:
+  enabled: true
+  control_dir: "/var/run/g3icap"
+
+# ICAP services configuration
+server:
+  - name: "icap-server-1"
+    listen: "0.0.0.0:1344"
+    protocol: "icap"
+    services:
+      - name: "reqmod"
+        path: "/reqmod"
+        description: "Request modification service"
+        preview_size: 1024
+        max_connections: 100
+        
+      - name: "respmod"
+        path: "/respmod"
+        description: "Response modification service"
+        preview_size: 2048
+        max_connections: 100
+        
+      - name: "options"
+        path: "/options"
+        description: "Service discovery"
+        methods: ["REQMOD", "RESPMOD", "OPTIONS"]
+        service_id: "g3icap-1.0"
+
+# Security configuration
+security:
+  tls:
+    enabled: false
+    cert_file: "/etc/g3icap/server.crt"
+    key_file: "/etc/g3icap/server.key"
+
+# Performance tuning
+performance:
+  connection_pool:
+    max_size: 1000
+    min_idle: 10
+    idle_timeout: 300
+    
+  request_processing:
+    max_concurrent: 100
+    timeout: 30
+    retry_attempts: 3
+    
+  memory:
+    max_request_size: 10485760  # 10MB
+    max_response_size: 10485760  # 10MB
+    buffer_size: 65536  # 64KB
+
+# Monitoring and observability
+monitoring:
+  health_check:
+    enabled: true
+    path: "/health"
+    interval: 30
+    
+  metrics:
+    request_metrics:
+      - "total_requests"
+      - "requests_per_second"
+      - "request_duration"
+      - "request_size"
+      
+    connection_metrics:
+      - "active_connections"
+      - "total_connections"
+      - "connection_errors"
+      - "connection_duration"
+      
+    service_metrics:
+      - "reqmod_requests"
+      - "respmod_requests"
+      - "options_requests"
+      - "service_errors"
+      
+    performance_metrics:
+      - "cpu_usage"
+      - "memory_usage"
+      - "gc_pause_time"
+      - "thread_count"
+
+# Example usage:
+# 1. Start G3StatsD server:
+#    g3statsd --config /etc/g3statsd/g3statsd.yaml
+#
+# 2. Start G3ICAP with this config:
+#    g3icap --config /etc/g3icap/g3icap.yaml
+#
+# 3. Metrics will be emitted to G3StatsD every 10 seconds with proper tagging
+#
+# Metrics emitted:
+# - icap.requests.total:1234|c|#daemon_group:g3icap,environment:production
+# - icap.connections.active:56|g|#daemon_group:g3icap,environment:production
+# - icap.processing_time.avg:150|ms|#daemon_group:g3icap,environment:production

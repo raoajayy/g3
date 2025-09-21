@@ -1,0 +1,93 @@
+# G3Proxy Advanced Configuration with G3ICAP Integration
+# This configuration demonstrates advanced ICAP integration features
+
+runtime:
+  thread_number: 4
+
+# Logging configuration
+log: stdout
+
+# Statistics configuration
+stat:
+  target:
+    udp: 127.0.0.1:8125
+  emit_duration: 2s
+
+# Multiple auditor configurations for different ICAP services
+auditor:
+  - name: content_filter
+    protocol_inspection: { }
+    tls_cert_generator: { }
+    tls_ticketer: { }
+    tls_stream_dump: { }
+    # Content filtering ICAP services
+    icap_reqmod_service: icap://127.0.0.1:1344/reqmod
+    icap_respmod_service: icap://127.0.0.1:1344/respmod
+  
+  - name: antivirus_scan
+    protocol_inspection: { }
+    tls_cert_generator: { }
+    tls_ticketer: { }
+    tls_stream_dump: { }
+    # Antivirus scanning ICAP services
+    icap_reqmod_service: icap://127.0.0.1:1344/reqmod
+    icap_respmod_service: icap://127.0.0.1:1344/respmod
+
+# Server configurations with different auditors
+server:
+  - name: http_filtered
+    escaper: default
+    auditor: content_filter
+    type: http_proxy
+    listen:
+      address: "127.0.0.1:3129"
+    tls_client: { }
+  
+  - name: https_filtered
+    escaper: default
+    auditor: antivirus_scan
+    type: http_proxy
+    listen:
+      address: "127.0.0.1:3128"
+    tls_client: { }
+  
+  - name: http_unfiltered
+    escaper: default
+    type: http_proxy
+    listen:
+      address: "127.0.0.1:3130"
+    tls_client: { }
+  
+  - name: socks
+    escaper: default
+    auditor: content_filter
+    type: socks_proxy
+    listen:
+      address: "127.0.0.1:1081"
+
+# DNS resolver configuration
+resolver:
+  - name: default
+    type: c-ares
+
+# Escaper configuration
+escaper:
+  - name: default
+    type: direct_fixed
+    resolver: default
+
+# ICAP configuration
+icap:
+  timeout: 30s
+  max_connections: 100
+  retry_attempts: 3
+  retry_delay: 1s
+  enable_preview: true
+  preview_size: 1024
+  enable_204_responses: true
+  user_agent: "G3Proxy/1.0"
+  x_client_ip_header: "X-Client-IP"
+  x_forwarded_for_header: "X-Forwarded-For"
+  # Additional ICAP headers
+  x_icap_metadata: "G3Proxy-ICAP-Integration"
+  x_icap_version: "1.0"

@@ -1,0 +1,221 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #0f172a;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --accent: #f1f5f9;
+  --accent-foreground: #0f172a;
+  --muted: #f8fafc;
+  --muted-foreground: #64748b;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #3b82f6;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+    --primary: #3b82f6;
+    --primary-foreground: #ffffff;
+    --secondary: #1e293b;
+    --secondary-foreground: #f8fafc;
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    --accent: #1e293b;
+    --accent-foreground: #f8fafc;
+    --muted: #1e293b;
+    --muted-foreground: #94a3b8;
+    --border: #334155;
+    --input: #334155;
+    --ring: #3b82f6;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Ensure text visibility and proper contrast */
+.text-gray-900 {
+  color: #111827 !important;
+}
+
+.text-gray-600 {
+  color: #4b5563 !important;
+}
+
+.text-white {
+  color: #ffffff !important;
+}
+
+/* Button text visibility - ensure proper contrast */
+button {
+  color: inherit;
+}
+
+/* Force button text colors for better visibility */
+.bg-blue-600 {
+  background-color: #2563eb !important;
+}
+
+.bg-blue-600.text-white {
+  color: #ffffff !important;
+}
+
+.bg-red-600 {
+  background-color: #dc2626 !important;
+}
+
+.bg-red-600.text-white {
+  color: #ffffff !important;
+}
+
+.bg-white {
+  background-color: #ffffff !important;
+}
+
+.bg-white.text-gray-900 {
+  color: #111827 !important;
+}
+
+.bg-gray-100 {
+  background-color: #f3f4f6 !important;
+}
+
+.bg-gray-100.text-gray-900 {
+  color: #111827 !important;
+}
+
+/* Ensure button text is always visible */
+button[class*="bg-blue"] {
+  color: #ffffff !important;
+}
+
+button[class*="bg-red"] {
+  color: #ffffff !important;
+}
+
+button[class*="bg-white"] {
+  color: #111827 !important;
+}
+
+button[class*="bg-gray"] {
+  color: #111827 !important;
+}
+
+/* Force visibility for all button text */
+button {
+  font-weight: 500 !important;
+}
+
+button span,
+button svg + span,
+button .button-text {
+  color: inherit !important;
+  font-weight: inherit !important;
+}
+
+/* Specific overrides for common button patterns */
+button[type="button"],
+button[type="submit"],
+button[type="reset"] {
+  color: inherit !important;
+}
+
+/* Ensure text in buttons with icons is visible */
+button .flex.items-center.gap-2 {
+  color: inherit !important;
+}
+
+button .flex.items-center.gap-2 span {
+  color: inherit !important;
+}
+
+/* Additional button text visibility rules */
+button[class*="Button"] {
+  color: inherit !important;
+}
+
+button[class*="Button"] * {
+  color: inherit !important;
+}
+
+/* Force visibility for all text content in buttons */
+button {
+  -webkit-text-fill-color: inherit !important;
+}
+
+/* Ensure button text is not transparent */
+button[style*="color"] {
+  color: inherit !important;
+}
+
+/* Override any potential text hiding */
+button[class*="invisible"],
+button[class*="opacity-0"] {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* Ensure button text has proper contrast */
+button[class*="bg-blue"] {
+  color: #ffffff !important;
+  text-shadow: none !important;
+}
+
+button[class*="bg-red"] {
+  color: #ffffff !important;
+  text-shadow: none !important;
+}
+
+button[class*="bg-white"],
+button[class*="bg-gray"] {
+  color: #111827 !important;
+  text-shadow: none !important;
+}
+
+/* Ensure proper spacing and margins */
+.space-y-6 > * + * {
+  margin-top: 1.5rem;
+}
+
+.gap-2 {
+  gap: 0.5rem;
+}
+
+.gap-4 {
+  gap: 1rem;
+}
+
+.gap-6 {
+  gap: 1.5rem;
+}

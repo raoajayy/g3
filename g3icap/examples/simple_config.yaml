@@ -1,0 +1,25 @@
+# G3ICAP Basic Configuration
+# Minimal configuration for quick start
+
+# Server
+server:
+  host: "127.0.0.1"
+  port: 1344
+
+# Services
+services:
+  - name: "echo"
+    path: "/echo"
+    module: "echo"
+
+  - name: "log"
+    path: "/log"
+    module: "logging"
+
+# Pipeline
+pipeline:
+  stages: ["logging", "echo"]
+
+# Stats
+stats:
+  enabled: true

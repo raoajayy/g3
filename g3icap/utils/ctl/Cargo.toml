@@ -1,0 +1,12 @@
+[package]
+name = "g3icap-ctl"
+version = "0.1.0"
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+g3-ctl.workspace = true
+g3icap = { path = "../.." }

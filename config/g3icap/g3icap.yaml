@@ -1,0 +1,51 @@
+# G3ICAP Production Configuration
+# This is the default configuration file for production deployment
+
+# Server configuration
+server:
+  host: "0.0.0.0"
+  port: 1344
+  max_connections: 1000
+  connection_timeout: 30
+  request_timeout: 60
+  tls: false
+  tls_cert: null
+  tls_key: null
+
+# Services configuration
+services:
+  reqmod: []
+  respmod: []
+  options: []
+
+# Security configuration
+security:
+  allowed_clients: []
+  blocked_clients: []
+  auth_required: false
+  auth_method: null
+
+# Logging configuration
+logging:
+  level: "info"
+  format: "json"
+  file: "config/g3icap/logs/g3icap.log"
+  structured: true
+
+# Statistics configuration
+statistics:
+  enabled: true
+  port: 8080
+  path: "/stats"
+  metrics_enabled: true
+  metrics_port: 9090
+
+# StatsD configuration
+statsd:
+  server: "127.0.0.1"
+  port: 8125
+  prefix: "g3icap"
+  emit_interval: 10
+  buffer_size: 1024
+  udp_enabled: true
+  tcp_enabled: false

@@ -1,0 +1,29 @@
+---
+runtime:
+  thread_number: 2
+
+worker:
+  thread_number: 2
+
+importer:
+  - name: statsd
+    type: statsd
+    collector: aggregate_1s
+    listen: 127.0.0.1:8125
+
+collector:
+  - name: aggregate_1s
+    type: aggregate
+    emit_interval: 1s
+    join_tags:
+      - stat_id
+    exporter: influxdb
+
+exporter:
+  - name: influxdb
+    type: influxdb_v2
+    server: 127.0.0.1
+    port: 8086
+    database: g3statsd
+    token: g3statsd-token
+    prefix: g3statsd

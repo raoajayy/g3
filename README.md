@@ -12,6 +12,34 @@
 This is the project we used to build enterprise-oriented generic proxy solutions,
 including but not limited to proxy / reverse proxy (WIP) / load balancer (TBD) / NAT traversal (WIP).
 
+## Quick Start
+
+For easy management of all G3 services, use the provided management scripts:
+
+```bash
+# Start all services (G3Proxy, G3StatsD, InfluxDB, Admin Console)
+./g3 start
+
+# Check service status
+./g3 status
+
+# Stop all services
+./g3 stop
+
+# View all available commands
+./g3 help
+```
+
+Or use the Makefile:
+```bash
+make start    # Start all services
+make status   # Check status
+make stop     # Stop all services
+make help     # Show all commands
+```
+
+For detailed information about the management scripts, see [SCRIPTS_README.md](SCRIPTS_README.md).
+
 ## Applications
 
 The G3 project consists of many applications, each of which has a separate subdirectory containing its own code,
@@ -22,6 +50,7 @@ In addition to the application directories, there are some public directories:
 - [doc](doc) Contains project-level documentation.
 - [sphinx](sphinx) is used to generate HTML reference documents for each application.
 - [scripts](scripts) Contains various auxiliary scripts, including coverage testing, packaging scripts, etc.
+- [config](config) Contains organized configuration files for all services.
 
 ### g3proxy
 

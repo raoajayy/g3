@@ -1,0 +1,36 @@
+[Unit]
+Description=G3 ICAP Server
+Documentation=https://github.com/bytedance/g3
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=g3icap
+Group=g3icap
+ExecStart=/usr/local/bin/g3icap --config /etc/g3icap/g3icap.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=g3icap
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/g3icap
+ReadWritePaths=/var/run/g3icap
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=32768
+
+# Environment
+Environment=RUST_LOG=info
+Environment=G3ICAP_CONFIG=/etc/g3icap/g3icap.yaml
+
+[Install]
+WantedBy=multi-user.target

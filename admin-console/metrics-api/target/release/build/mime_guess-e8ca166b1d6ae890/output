@@ -1,0 +1,1 @@
+cargo:rustc-env=MIME_TYPES_GENERATED_PATH=/Users/ajaykumar/Documents/GitHub/Arcus/g3/admin-console/metrics-api/target/release/build/mime_guess-e8ca166b1d6ae890/out/mime_types_generated.rs

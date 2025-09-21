@@ -1,0 +1,59 @@
+# Basic G3 ICAP Server Configuration
+
+server:
+  host: "0.0.0.0"
+  port: 1344
+  max_connections: 1000
+  connection_timeout: 30
+  request_timeout: 60
+  tls: false
+
+services:
+  reqmod:
+    - name: "content-filter"
+      description: "Content filtering service"
+      path: "/reqmod"
+      handler: "content-filter"
+      config:
+        blocked_domains:
+          - "malware.com"
+          - "phishing.com"
+        blocked_keywords:
+          - "malware"
+          - "virus"
+          - "phishing"
+
+  respmod:
+    - name: "virus-scan"
+      description: "Virus scanning service"
+      path: "/respmod"
+      handler: "virus-scan"
+      config:
+        scan_engine: "clamav"
+        quarantine: true
+
+  options:
+    - name: "service-info"
+      description: "Service information"
+      path: "/options"
+      options:
+        ISTag: "g3icap-1.0"
+        Methods: "REQMOD, RESPMOD"
+        Service: "G3 ICAP Server"
+
+security:
+  allowed_clients: []
+  blocked_clients: []
+  auth_required: false
+
+logging:
+  level: "info"
+  format: "json"
+  structured: true
+
+statistics:
+  enabled: true
+  port: 8080
+  path: "/stats"
+  metrics_enabled: true
+  metrics_port: 9090

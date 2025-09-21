@@ -1,0 +1,66 @@
+#!/bin/bash
+
+# G3 Services Alias Script
+# Simple alias for common G3 operations
+
+case "${1:-}" in
+    start|up)
+        ./quick-start.sh start
+        ;;
+    stop|down)
+        ./quick-start.sh stop
+        ;;
+    restart)
+        ./quick-start.sh stop
+        sleep 2
+        ./quick-start.sh start
+        ;;
+    status|ps)
+        ./quick-start.sh status
+        ;;
+    logs)
+        ./start-services.sh logs
+        ;;
+    monitoring|grafana)
+        ./start-services.sh monitoring
+        ;;
+    build)
+        cargo build
+        ;;
+    install)
+        cd admin-console && npm install && cd ..
+        ;;
+    clean)
+        ./quick-start.sh stop
+        docker-compose -f docker-compose-influxdb.yml down 2>/dev/null || true
+        docker-compose -f docker-compose-monitoring.yml down 2>/dev/null || true
+        ;;
+    help|--help|-h)
+        echo "G3 Services Quick Commands"
+        echo "========================="
+        echo ""
+        echo "Usage: ./g3 [COMMAND]"
+        echo ""
+        echo "Commands:"
+        echo "  start, up      - Start all services"
+        echo "  stop, down     - Stop all services"
+        echo "  restart        - Restart all services"
+        echo "  status, ps     - Show service status"
+        echo "  logs           - Show service logs"
+        echo "  monitoring     - Start Grafana monitoring"
+        echo "  build          - Build the project"
+        echo "  install        - Install admin console deps"
+        echo "  clean          - Clean up everything"
+        echo "  help           - Show this help"
+        echo ""
+        echo "Examples:"
+        echo "  ./g3 start     # Start all services"
+        echo "  ./g3 status    # Check status"
+        echo "  ./g3 stop      # Stop all services"
+        ;;
+    *)
+        echo "Unknown command: ${1:-}"
+        echo "Use './g3 help' for available commands"
+        exit 1
+        ;;
+esac

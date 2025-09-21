@@ -1,0 +1,100 @@
+# Advanced G3 ICAP Server Configuration
+
+server:
+  host: "0.0.0.0"
+  port: 1344
+  max_connections: 5000
+  connection_timeout: 60
+  request_timeout: 120
+  tls: true
+  tls_cert: "/etc/ssl/certs/g3icap.crt"
+  tls_key: "/etc/ssl/private/g3icap.key"
+
+services:
+  reqmod:
+    - name: "enterprise-filter"
+      description: "Enterprise content filtering"
+      path: "/reqmod"
+      handler: "enterprise-filter"
+      config:
+        policy_engine: "ldap"
+        ldap_server: "ldap://ldap.company.com"
+        ldap_base: "ou=policies,dc=company,dc=com"
+        categories:
+          - "adult"
+          - "gambling"
+          - "social-media"
+        time_restrictions:
+          enabled: true
+          business_hours: "09:00-17:00"
+          timezone: "UTC"
+
+    - name: "malware-protection"
+      description: "Malware protection service"
+      path: "/malware"
+      handler: "malware-protection"
+      config:
+        engines:
+          - "clamav"
+          - "yara"
+        real_time: true
+        quarantine: true
+        notification: true
+
+  respmod:
+    - name: "dlp-scan"
+      description: "Data Loss Prevention scanning"
+      path: "/dlp"
+      handler: "dlp-scan"
+      config:
+        patterns:
+          - "credit_card"
+          - "ssn"
+          - "email"
+        action: "block"
+        log_level: "detailed"
+
+    - name: "content-optimization"
+      description: "Content optimization service"
+      path: "/optimize"
+      handler: "content-optimization"
+      config:
+        compress: true
+        minify: true
+        cache_control: true
+        cdn_integration: true
+
+  options:
+    - name: "service-discovery"
+      description: "Service discovery endpoint"
+      path: "/options"
+      options:
+        ISTag: "g3icap-enterprise-1.0"
+        Methods: "REQMOD, RESPMOD, OPTIONS"
+        Service: "G3 ICAP Enterprise Server"
+        Max-Connections: "5000"
+        Options-TTL: "3600"
+        Allow: "204"
+        Preview: "1024"
+
+security:
+  allowed_clients:
+    - "192.168.1.0/24"
+    - "10.0.0.0/8"
+  blocked_clients:
+    - "192.168.1.100"
+  auth_required: true
+  auth_method: "basic"
+
+logging:
+  level: "debug"
+  format: "json"
+  file: "/var/log/g3icap/server.log"
+  structured: true
+
+statistics:
+  enabled: true
+  port: 8080
+  path: "/stats"
+  metrics_enabled: true
+  metrics_port: 9090

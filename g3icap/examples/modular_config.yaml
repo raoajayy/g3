@@ -1,0 +1,56 @@
+# G3ICAP Simple Configuration
+# Basic configuration for G3ICAP modular server
+
+# Server settings
+server:
+  host: "127.0.0.1"
+  port: 1344
+  max_connections: 1000
+
+# Logging
+logging:
+  level: "info"
+  file: "/var/log/g3icap/g3icap.log"
+
+# Services - Simple service definitions
+services:
+  - name: "echo"
+    path: "/echo"
+    module: "echo"
+    methods: ["REQMOD", "RESPMOD", "OPTIONS"]
+
+  - name: "logging"
+    path: "/logging"
+    module: "logging"
+    methods: ["REQMOD", "RESPMOD"]
+
+  - name: "filter"
+    path: "/filter"
+    module: "content_filter"
+    methods: ["REQMOD", "RESPMOD"]
+    config:
+      blocked_patterns: ["malware", "virus"]
+
+  - name: "scan"
+    path: "/scan"
+    module: "antivirus"
+    methods: ["REQMOD", "RESPMOD"]
+    config:
+      engine: "clamav"
+      timeout: 30
+
+# Pipeline - Simple processing stages
+pipeline:
+  name: "default"
+  stages:
+    - "logging"
+    - "filter"
+    - "scan"
+  timeout: 60
+
+# Statistics
+stats:
+  enabled: true
+  server: "127.0.0.1"
+  port: 8125
+  prefix: "g3icap"

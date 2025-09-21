@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: 'G3Proxy Dashboards'
+    orgId: 1
+    folder: 'G3Proxy'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

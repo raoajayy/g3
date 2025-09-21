@@ -1,0 +1,209 @@
+# G3ICAP with G3StatsD Integration Configuration
+# This example shows how to configure G3ICAP to emit metrics to G3StatsD
+
+# Server configuration
+server:
+  host: "0.0.0.0"
+  port: 1344
+  max_connections: 1000
+  connection_timeout: 30
+  request_timeout: 60
+
+# Security configuration
+security:
+  tls:
+    enabled: false
+    cert_file: "/etc/g3icap/server.crt"
+    key_file: "/etc/g3icap/server.key"
+
+# Logging configuration
+logging:
+  level: "info"
+  format: "json"
+  structured: true
+  file: "/var/log/g3icap/g3icap.log"
+
+# Statistics configuration
+statistics:
+  enabled: true
+  port: 8080
+  path: "/stats"
+  metrics_enabled: true
+  metrics_port: 9090
+
+# StatsD configuration for metrics emission
+statsd:
+  server: "127.0.0.1"
+  port: 8125
+  prefix: "g3icap"
+  emit_interval: 10  # seconds
+  buffer_size: 1024
+  udp_enabled: true
+  tcp_enabled: false
+
+# ICAP services configuration
+services:
+  # REQMOD service for request modification
+  reqmod:
+    enabled: true
+    path: "/reqmod"
+    description: "Request modification service"
+    preview_size: 1024
+    max_connections: 100
+    
+  # RESPMOD service for response modification
+  respmod:
+    enabled: true
+    path: "/respmod"
+    description: "Response modification service"
+    preview_size: 2048
+    max_connections: 100
+    
+  # OPTIONS service for service discovery
+  options:
+    enabled: true
+    path: "/options"
+    description: "Service discovery"
+    methods: ["REQMOD", "RESPMOD", "OPTIONS"]
+    service_id: "g3icap-1.0"
+
+# Performance tuning
+performance:
+  # Connection pool settings
+  connection_pool:
+    max_size: 1000
+    min_idle: 10
+    idle_timeout: 300  # seconds
+    
+  # Request processing
+  request_processing:
+    max_concurrent: 100
+    timeout: 30  # seconds
+    retry_attempts: 3
+    
+  # Memory management
+  memory:
+    max_request_size: 10485760  # 10MB
+    max_response_size: 10485760  # 10MB
+    buffer_size: 65536  # 64KB
+
+# Monitoring and observability
+monitoring:
+  # Health check endpoint
+  health_check:
+    enabled: true
+    path: "/health"
+    interval: 30  # seconds
+    
+  # Metrics collection
+  metrics:
+    # Request metrics
+    request_metrics:
+      - "total_requests"
+      - "requests_per_second"
+      - "request_duration"
+      - "request_size"
+      
+    # Connection metrics
+    connection_metrics:
+      - "active_connections"
+      - "total_connections"
+      - "connection_errors"
+      - "connection_duration"
+      
+    # Service metrics
+    service_metrics:
+      - "reqmod_requests"
+      - "respmod_requests"
+      - "options_requests"
+      - "service_errors"
+      
+    # Performance metrics
+    performance_metrics:
+      - "cpu_usage"
+      - "memory_usage"
+      - "gc_pause_time"
+      - "thread_count"
+
+# G3StatsD integration settings
+g3statsd:
+  # StatsD client configuration
+  client:
+    server: "127.0.0.1"
+    port: 8125
+    prefix: "g3icap"
+    tags:
+      daemon_group: "g3icap"
+      environment: "production"
+      version: "0.1.0"
+    
+  # Metrics emission settings
+  emission:
+    interval: 10  # seconds
+    batch_size: 100
+    buffer_size: 1024
+    timeout: 5  # seconds
+    
+  # Metric types and configurations
+  metrics:
+    # Counter metrics
+    counters:
+      - name: "g3icap.requests.total"
+        description: "Total number of ICAP requests processed"
+        tags: ["method", "service"]
+        
+      - name: "g3icap.responses.successful"
+        description: "Number of successful responses"
+        tags: ["method", "service"]
+        
+      - name: "g3icap.responses.error"
+        description: "Number of error responses"
+        tags: ["method", "service", "error_type"]
+        
+      - name: "g3icap.connections.total"
+        description: "Total number of connections accepted"
+        tags: ["client_ip"]
+        
+      - name: "g3icap.bytes.processed"
+        description: "Total bytes processed"
+        tags: ["direction"]
+    
+    # Gauge metrics
+    gauges:
+      - name: "g3icap.connections.active"
+        description: "Current number of active connections"
+        
+      - name: "g3icap.requests.rate"
+        description: "Current request rate per second"
+        
+      - name: "g3icap.memory.usage"
+        description: "Current memory usage in bytes"
+    
+    # Timing metrics
+    timings:
+      - name: "g3icap.request.duration"
+        description: "Request processing duration"
+        tags: ["method", "service"]
+        
+      - name: "g3icap.connection.duration"
+        description: "Connection duration"
+        tags: ["client_ip"]
+        
+      - name: "g3icap.processing.time"
+        description: "Request processing time"
+        tags: ["method", "service"]
+
+# Example usage with G3StatsD
+# 
+# 1. Start G3StatsD server:
+#    g3statsd --config /etc/g3statsd/g3statsd.yaml
+#
+# 2. Start G3ICAP with StatsD enabled:
+#    g3icap --statsd --statsd-server 127.0.0.1 --statsd-port 8125
+#
+# 3. View metrics in G3StatsD dashboard or export to InfluxDB/Prometheus
+#
+# Metrics will be emitted every 10 seconds with the following format:
+# - g3icap.requests.total:1234|c
+# - g3icap.connections.active:56|g
+# - g3icap.request.duration:150|ms

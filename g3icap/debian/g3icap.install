@@ -1,0 +1,4 @@
+target/release/g3icap usr/local/bin/
+service/g3icap.service lib/systemd/system/
+service/g3icap@.service lib/systemd/system/
+examples/*.yaml etc/g3icap/

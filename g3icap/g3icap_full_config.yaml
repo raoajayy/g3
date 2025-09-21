@@ -1,0 +1,39 @@
+# G3ICAP Full Configuration
+# This is a comprehensive configuration file with all available features
+
+# Runtime configuration
+runtime:
+  thread_number: 8
+
+# Worker configuration  
+worker:
+  thread_number: 8
+
+# Logging configuration
+log: stdout
+
+# Statistics configuration (StatsD integration)
+stat:
+  target:
+    udp: 127.0.0.1:8125
+  emit_interval: 2s
+  prefix: "g3icap"
+
+# Controller configuration (removed - not supported in G3ICAP)
+
+# Server configuration
+server:
+  - name: "g3icap"
+    type: "IcapServer"
+    listen: 0.0.0.0:1344
+    max_connections: 2000
+    connection_timeout: 60
+    request_timeout: 120
+    enable_stats: true
+    stats_port: 8080
+    enable_metrics: true
+    metrics_port: 9090
+    listen_in_worker: false
+
+# Note: Advanced service and pipeline configurations are not yet supported
+# in the current G3ICAP implementation. Using basic server configuration.

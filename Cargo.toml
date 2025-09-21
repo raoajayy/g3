@@ -2,6 +2,9 @@
 members = [
     "g3bench",
     "g3fcgen",
+    "g3icap",
+    "g3icap/proto",
+    "g3icap/utils/ctl",
     "g3iploc",
     "g3keymess",
     "g3keymess/proto",
@@ -66,6 +69,8 @@ members = [
 default-members = [
     "g3bench",
     "g3fcgen",
+    "g3icap",
+    "g3icap/utils/ctl",
     "g3iploc",
     "g3mkcert",
     "g3proxy",

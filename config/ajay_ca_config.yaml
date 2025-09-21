@@ -1,0 +1,7 @@
+---
+runtime:
+  thread_number: 1
+
+backend:
+  ca_certificate: ajay.crt
+  ca_private_key: ajay.key

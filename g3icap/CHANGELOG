@@ -1,0 +1,39 @@
+# Changelog
+
+All notable changes to G3 ICAP Server will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.1.0] - 2024-01-XX
+
+### Added
+- Initial release of G3 ICAP Server
+- Support for ICAP REQMOD, RESPMOD, and OPTIONS methods
+- High-performance async server implementation
+- YAML-based configuration system
+- Content filtering and URL blocking capabilities
+- Virus scanning integration support
+- TLS/SSL encryption support
+- Comprehensive statistics collection
+- Prometheus metrics export
+- Systemd service integration
+- Docker containerization support
+- Extensive documentation and examples
+
+### Features
+- **Protocol Support**: Full ICAP 1.0 protocol implementation
+- **Performance**: Built with Rust for maximum performance and memory safety
+- **Security**: TLS support and client IP filtering
+- **Monitoring**: Statistics API and Prometheus metrics
+- **Configuration**: Flexible YAML configuration with validation
+- **Extensibility**: Plugin-based handler system for custom functionality
+- **Production Ready**: Systemd integration and proper logging
+
+### Architecture
+- Modular design following G3 project patterns
+- Async/await based on Tokio runtime
+- Comprehensive error handling with custom error types
+- Statistics collection with atomic operations
+- Service registry for dynamic service management
+- Signal handling for graceful shutdown

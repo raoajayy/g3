@@ -1,0 +1,37 @@
+# G3ICAP Server Configuration - HTTP/2 Compatible
+# This configuration is optimized for HTTP/2 compatibility
+
+# Runtime configuration
+runtime:
+  thread_number: 4
+
+# Worker configuration  
+worker:
+  thread_number: 4
+
+# Logging configuration
+log: stdout
+
+# Statistics configuration (StatsD integration)
+stat:
+  target:
+    udp: 127.0.0.1:8125
+  emit_interval: 2s
+  prefix: "g3icap"
+
+# Server configuration
+server:
+  - name: "g3icap"
+    type: "IcapServer"
+    listen: 0.0.0.0:1344
+    max_connections: 1000
+    connection_timeout: 30
+    request_timeout: 60
+    enable_stats: true
+    stats_port: 8080
+    enable_metrics: true
+    metrics_port: 9090
+    # HTTP/2 compatibility settings
+    http2_enabled: true
+    keep_alive: true
+    max_keep_alive_requests: 100

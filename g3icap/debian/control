@@ -1,0 +1,24 @@
+Source: g3icap
+Section: net
+Priority: optional
+Maintainer: G3 Team <g3@bytedance.com>
+Build-Depends: debhelper (>= 11), rustc (>= 1.88.0), cargo (>= 1.88.0), pkg-config, libssl-dev
+Standards-Version: 4.1.3
+Homepage: https://github.com/bytedance/g3
+
+Package: g3icap
+Architecture: any
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: G3 ICAP Server
+ A high-performance ICAP (Internet Content Adaptation Protocol) server
+ for content filtering, virus scanning, and content adaptation.
+ .
+ Features:
+  - High-performance async implementation
+  - Full ICAP 1.0 protocol support
+  - Content filtering and URL blocking
+  - Virus scanning integration
+  - TLS/SSL encryption
+  - Statistics and metrics collection
+  - YAML configuration
+  - Systemd integration

@@ -1,0 +1,171 @@
+# G3ICAP YARA Antivirus Configuration
+# This configuration demonstrates how to set up the antivirus module with YARA rules
+
+# Server configuration
+server:
+  host: "0.0.0.0"
+  port: 1344
+  max_connections: 1000
+  connection_timeout: 30
+  request_timeout: 60
+
+# Antivirus module configuration
+modules:
+  - name: "yara_antivirus"
+    type: "antivirus"
+    enabled: true
+    config:
+      # YARA engine configuration
+      engine:
+        type: "YARA"
+        rules_dir: "config/g3icap/yara_rules"
+        timeout: 30
+        max_rules: 1000
+        enable_compilation: true
+      
+      # General antivirus settings
+      max_file_size: 104857600  # 100MB
+      scan_timeout: 60
+      enable_quarantine: true
+      quarantine_dir: "config/g3icap/quarantine"
+      enable_logging: true
+      enable_metrics: true
+      
+      # File type filtering
+      scan_file_types:
+        - "exe"
+        - "dll"
+        - "pdf"
+        - "doc"
+        - "docx"
+        - "xls"
+        - "xlsx"
+        - "ppt"
+        - "pptx"
+        - "zip"
+        - "rar"
+        - "7z"
+        - "ps1"
+        - "bat"
+        - "cmd"
+        - "scr"
+        - "pif"
+        - "com"
+        - "vbs"
+        - "js"
+        - "jar"
+        - "war"
+        - "ear"
+      
+      skip_file_types:
+        - "txt"
+        - "log"
+        - "tmp"
+        - "temp"
+        - "bak"
+        - "swp"
+        - "lock"
+      
+      # Real-time scanning
+      enable_realtime: true
+      update_interval: 3600  # 1 hour
+      
+      # Threat intelligence
+      enable_threat_intel: true
+      threat_intel_sources:
+        - "https://rules.yara-rules.com"
+        - "https://github.com/Yara-Rules/rules"
+        - "https://github.com/Neo23x0/signature-base"
+      
+      # YARA-specific configuration
+      yara_config:
+        rules_dir: "config/g3icap/yara_rules"
+        compiled_rules_dir: "config/g3icap/yara_rules/compiled"
+        max_rules: 1000
+        enable_compilation: true
+        update_interval: 3600  # 1 hour
+        enable_caching: true
+        cache_size: 1000
+        enable_rule_stats: true
+        rule_priorities:
+          "malware": 8
+          "phishing": 7
+          "ransomware": 9
+          "apt": 9
+          "crypto_miner": 6
+          "fileless": 8
+          "social_engineering": 6
+          "network_suspicious": 4
+          "data_exfiltration": 7
+        enable_debug: false
+        rule_timeout: 30
+
+# Services configuration
+services:
+  reqmod:
+    - name: "yara_antivirus"
+      enabled: true
+      priority: 1
+  respmod:
+    - name: "yara_antivirus"
+      enabled: true
+      priority: 1
+  options:
+    - name: "yara_antivirus"
+      enabled: true
+      priority: 1
+
+# Logging configuration
+logging:
+  level: "info"
+  format: "json"
+  file: "config/g3icap/logs/g3icap.log"
+  structured: true
+  modules:
+    antivirus:
+      level: "debug"
+      file: "config/g3icap/logs/antivirus.log"
+    yara:
+      level: "info"
+      file: "config/g3icap/logs/yara.log"
+
+# Statistics configuration
+statistics:
+  enabled: true
+  port: 8080
+  path: "/stats"
+  metrics_enabled: true
+  metrics_port: 9090
+  modules:
+    antivirus:
+      enabled: true
+      detailed_metrics: true
+    yara:
+      enabled: true
+      rule_metrics: true
+      performance_metrics: true
+
+# StatsD configuration
+statsd:
+  server: "127.0.0.1"
+  port: 8125
+  prefix: "g3icap.antivirus"
+  emit_interval: 10
+  buffer_size: 1024
+  udp_enabled: true
+  tcp_enabled: false
+  tags:
+    module: "antivirus"
+    engine: "yara"
+
+# Security configuration
+security:
+  allowed_clients: []
+  blocked_clients: []
+  auth_required: false
+  auth_method: null
+  quarantine:
+    enabled: true
+    encryption: true
+    retention_days: 30
+    max_size_gb: 10

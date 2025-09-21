@@ -1,0 +1,9 @@
+[package]
+name = "g3icap-proto"
+version = "0.1.0"
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+capnp = { workspace = true }

@@ -1,0 +1,17 @@
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB v3 HTTP
+    type: influxdb
+    access: proxy
+    url: http://influxdb3:8181
+    database: g3proxy
+    user: admin
+    jsonData:
+      version: "1.x"
+      tlsSkipVerify: true
+      httpMode: GET
+      queryMode: influxql
+      timeInterval: 1s
+    isDefault: true
+    editable: true

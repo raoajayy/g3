@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  influxdb3:
+    image: quay.io/influxdb/influxdb3-core:latest
+    container_name: influxdb3
+    ports:
+      - "8181:8181"  # InfluxDB v3 API
+    command: [
+      "serve",
+      "--node-id", "influxdb3-node-1",
+      "--object-store", "file",
+      "--data-dir", "/var/lib/influxdb3",
+      "--without-auth"
+    ]
+    environment:
+      - INFLUXDB_DATABASE=g3proxy
+    volumes:
+      - influxdb_data:/var/lib/influxdb3
+    user: "0:0"  # Run as root to avoid permission issues
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8181/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3001:3000"  # Grafana Web UI
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    restart: unless-stopped
+    depends_on:
+      - influxdb3
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  influxdb_data:
+  grafana_data:
