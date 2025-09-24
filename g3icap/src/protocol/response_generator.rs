@@ -78,11 +78,12 @@ impl IcapResponseGenerator {
     }
 
     /// Generate a 200 OK response with chunked transfer encoding
+    /// RFC 3507: All encapsulated HTTP bodies MUST use chunked transfer encoding
     pub fn ok_modified_chunked(&self, encapsulated: Option<EncapsulatedData>, body: Bytes) -> IcapResponse {
         let mut headers = self.build_standard_headers();
         
         if let Some(enc) = &encapsulated {
-            let encapsulated_header = self.serialize_encapsulated_header(enc);
+            let encapsulated_header = self.serialize_encapsulated_header_chunked(enc);
             headers.insert("encapsulated", encapsulated_header.parse().unwrap());
         }
 
@@ -679,6 +680,120 @@ impl IcapResponseGenerator {
         parts.join(", ")
     }
 
+    /// Serialize encapsulated header for chunked response
+    /// RFC 3507: All encapsulated HTTP bodies MUST use chunked transfer encoding
+    fn serialize_encapsulated_header_chunked(&self, encapsulated: &EncapsulatedData) -> String {
+        let mut parts = Vec::new();
+        
+        if let Some(req_hdr) = &encapsulated.req_hdr {
+            parts.push(format!("req-hdr={}", req_hdr.len()));
+        }
+        if let Some(res_hdr) = &encapsulated.res_hdr {
+            parts.push(format!("res-hdr={}", res_hdr.len()));
+        }
+        if let Some(req_body) = &encapsulated.req_body {
+            // For chunked encoding, we need to account for the chunked wrapper
+            let chunked_size = self.calculate_chunked_size(req_body);
+            parts.push(format!("req-body={}", chunked_size));
+        }
+        if let Some(res_body) = &encapsulated.res_body {
+            // For chunked encoding, we need to account for the chunked wrapper
+            let chunked_size = self.calculate_chunked_size(res_body);
+            parts.push(format!("res-body={}", chunked_size));
+        }
+        if encapsulated.null_body {
+            parts.push("null-body=0".to_string());
+        }
+
+        parts.join(", ")
+    }
+
+    /// Calculate the size of data when encoded with chunked transfer encoding
+    fn calculate_chunked_size(&self, data: &Bytes) -> usize {
+        if data.is_empty() {
+            return 5; // "0\r\n\r\n"
+        }
+        
+        // Calculate chunked encoding overhead
+        let mut total_size = 0;
+        const CHUNK_SIZE: usize = 8192; // 8KB chunks
+        let mut pos = 0;
+        
+        while pos < data.len() {
+            let chunk_end = std::cmp::min(pos + CHUNK_SIZE, data.len());
+            let chunk_len = chunk_end - pos;
+            
+            // Chunk size line: hex_size + "\r\n"
+            let hex_size = format!("{:x}", chunk_len);
+            total_size += hex_size.len() + 2; // hex_size + "\r\n"
+            
+            // Chunk data
+            total_size += chunk_len;
+            
+            // Chunk trailer: "\r\n"
+            total_size += 2;
+            
+            pos = chunk_end;
+        }
+        
+        // Final zero-length chunk: "0\r\n\r\n"
+        total_size += 5;
+        
+        total_size
+    }
+
+    /// Encode encapsulated HTTP body with chunked transfer encoding
+    /// RFC 3507: All encapsulated HTTP bodies MUST use chunked transfer encoding
+    pub fn encode_encapsulated_body_chunked(&self, body: &Bytes) -> Bytes {
+        use crate::protocol::chunked::encode_chunked;
+        encode_chunked(body)
+    }
+
+    /// Create a chunked encapsulated data structure
+    /// This ensures all HTTP bodies are properly chunked as required by RFC 3507
+    pub fn create_chunked_encapsulated_data(
+        &self,
+        req_hdr: Option<HeaderMap>,
+        res_hdr: Option<HeaderMap>,
+        req_body: Option<Bytes>,
+        res_body: Option<Bytes>,
+    ) -> EncapsulatedData {
+        EncapsulatedData {
+            req_hdr,
+            res_hdr,
+            req_body: req_body.map(|body| self.encode_encapsulated_body_chunked(&body)),
+            res_body: res_body.map(|body| self.encode_encapsulated_body_chunked(&body)),
+            null_body: false,
+        }
+    }
+
+    /// Create a chunked response with properly encoded encapsulated data
+    /// RFC 3507: All encapsulated HTTP bodies MUST use chunked transfer encoding
+    pub fn create_chunked_response_with_encapsulated(
+        &self,
+        status: StatusCode,
+        req_hdr: Option<HeaderMap>,
+        res_hdr: Option<HeaderMap>,
+        req_body: Option<Bytes>,
+        res_body: Option<Bytes>,
+        icap_body: Bytes,
+    ) -> IcapResponse {
+        let encapsulated = self.create_chunked_encapsulated_data(req_hdr, res_hdr, req_body, res_body);
+        let mut headers = self.build_standard_headers();
+        
+        let encapsulated_header = self.serialize_encapsulated_header_chunked(&encapsulated);
+        headers.insert("encapsulated", encapsulated_header.parse().unwrap());
+        headers.insert("transfer-encoding", "chunked".parse().unwrap());
+
+        IcapResponse {
+            status,
+            version: Version::HTTP_11,
+            headers,
+            body: icap_body,
+            encapsulated: Some(encapsulated),
+        }
+    }
+
 
     /// Format error message with proper ICAP error formatting
     /// Following g3proxy's error formatting patterns
@@ -852,6 +967,7 @@ impl IcapResponseGenerator {
     }
 
     /// Create a chunked response with proper encapsulated headers
+    /// RFC 3507: All encapsulated HTTP bodies MUST use chunked transfer encoding
     pub fn create_chunked_response(
         &self,
         status: StatusCode,
@@ -862,7 +978,7 @@ impl IcapResponseGenerator {
         let mut headers = self.build_standard_headers();
         
         if let Some(enc) = &encapsulated {
-            let encapsulated_header = self.serialize_encapsulated_header(enc);
+            let encapsulated_header = self.serialize_encapsulated_header_chunked(enc);
             headers.insert("encapsulated", encapsulated_header.parse().unwrap());
         }
 
@@ -1403,5 +1519,222 @@ mod tests {
         assert!(html.contains("<h1>403 Forbidden</h1>"));
         assert!(html.contains("<p>Access denied</p>"));
         assert!(html.contains("</html>"));
+    }
+
+    #[test]
+    fn test_calculate_chunked_size() {
+        let generator = IcapResponseGenerator::default();
+        
+        // Empty data
+        let empty = Bytes::new();
+        assert_eq!(generator.calculate_chunked_size(&empty), 5); // "0\r\n\r\n"
+        
+        // Small data (fits in one chunk)
+        let small = Bytes::from("Hello, World!");
+        let actual_small = generator.calculate_chunked_size(&small);
+        println!("Small data size: {}, actual chunked size: {}", small.len(), actual_small);
+        
+        // Calculate expected size: "d\r\n" (3) + data (13) + "\r\n" (2) + "0\r\n\r\n" (5) = 23
+        let expected_small = 3 + 13 + 2 + 5; // "d\r\n" + data + "\r\n" + "0\r\n\r\n"
+        assert_eq!(actual_small, expected_small);
+        
+        // Large data (multiple chunks)
+        let large = Bytes::from("x".repeat(10000));
+        let actual_large = generator.calculate_chunked_size(&large);
+        println!("Large data size: {}, actual chunked size: {}", large.len(), actual_large);
+        
+        // For 10000 bytes with 8KB chunks: 1 chunk of 8192 + 1 chunk of 1808
+        // Chunk 1: "2000\r\n" (6) + data (8192) + "\r\n" (2) = 8200
+        // Chunk 2: "710\r\n" (5) + data (1808) + "\r\n" (2) = 1815
+        // Final: "0\r\n\r\n" (5)
+        // Total: 8200 + 1815 + 5 = 10020
+        let expected_large = 8200 + 1815 + 5;
+        assert_eq!(actual_large, expected_large);
+    }
+
+    #[test]
+    fn test_encode_encapsulated_body_chunked() {
+        let generator = IcapResponseGenerator::default();
+        
+        // Test empty body
+        let empty = Bytes::new();
+        let chunked_empty = generator.encode_encapsulated_body_chunked(&empty);
+        assert_eq!(chunked_empty.as_ref(), b"0\r\n\r\n");
+        
+        // Test small body
+        let small = Bytes::from("Hello, World!");
+        let chunked_small = generator.encode_encapsulated_body_chunked(&small);
+        let expected = b"d\r\nHello, World!\r\n0\r\n\r\n";
+        assert_eq!(chunked_small.as_ref(), expected);
+    }
+
+    #[test]
+    fn test_create_chunked_encapsulated_data() {
+        let generator = IcapResponseGenerator::default();
+        
+        // Create headers
+        let mut req_headers = HeaderMap::new();
+        req_headers.insert("content-type", "text/html".parse().unwrap());
+        
+        let mut res_headers = HeaderMap::new();
+        res_headers.insert("content-length", "13".parse().unwrap());
+        
+        // Create bodies
+        let req_body = Bytes::from("Request body");
+        let res_body = Bytes::from("Response body");
+        
+        // Create chunked encapsulated data
+        let encapsulated = generator.create_chunked_encapsulated_data(
+            Some(req_headers.clone()),
+            Some(res_headers.clone()),
+            Some(req_body.clone()),
+            Some(res_body.clone()),
+        );
+        
+        // Verify headers are preserved
+        assert_eq!(encapsulated.req_hdr, Some(req_headers));
+        assert_eq!(encapsulated.res_hdr, Some(res_headers));
+        
+        // Verify bodies are chunked
+        assert!(encapsulated.req_body.is_some());
+        assert!(encapsulated.res_body.is_some());
+        
+        // Verify chunked encoding format
+        let chunked_req = encapsulated.req_body.unwrap();
+        println!("Chunked req body: {:?}", chunked_req);
+        assert!(chunked_req.starts_with(b"c\r\n")); // "c" = 12 in hex (Request body = 12 chars)
+        assert!(chunked_req.ends_with(b"\r\n0\r\n\r\n"));
+        
+        let chunked_res = encapsulated.res_body.unwrap();
+        println!("Chunked res body: {:?}", chunked_res);
+        assert!(chunked_res.starts_with(b"d\r\n")); // "d" = 13 in hex (Response body = 13 chars)
+        assert!(chunked_res.ends_with(b"\r\n0\r\n\r\n"));
+    }
+
+    #[test]
+    fn test_create_chunked_response_with_encapsulated() {
+        let generator = IcapResponseGenerator::default();
+        
+        // Create headers
+        let mut req_headers = HeaderMap::new();
+        req_headers.insert("content-type", "text/html".parse().unwrap());
+        
+        let mut res_headers = HeaderMap::new();
+        res_headers.insert("content-length", "13".parse().unwrap());
+        
+        // Create bodies
+        let req_body = Bytes::from("Request body");
+        let res_body = Bytes::from("Response body");
+        let icap_body = Bytes::from("ICAP response body");
+        
+        // Create chunked response
+        let response = generator.create_chunked_response_with_encapsulated(
+            StatusCode::OK,
+            Some(req_headers),
+            Some(res_headers),
+            Some(req_body),
+            Some(res_body),
+            icap_body.clone(),
+        );
+        
+        // Verify response structure
+        assert_eq!(response.status, StatusCode::OK);
+        assert_eq!(response.body, icap_body);
+        assert!(response.encapsulated.is_some());
+        
+        // Verify headers
+        assert!(response.headers.contains_key("encapsulated"));
+        assert!(response.headers.contains_key("transfer-encoding"));
+        assert_eq!(response.headers.get("transfer-encoding").unwrap(), "chunked");
+        
+        // Verify encapsulated data
+        let encapsulated = response.encapsulated.unwrap();
+        assert!(encapsulated.req_hdr.is_some());
+        assert!(encapsulated.res_hdr.is_some());
+        assert!(encapsulated.req_body.is_some());
+        assert!(encapsulated.res_body.is_some());
+    }
+
+    #[test]
+    fn test_serialize_encapsulated_header_chunked() {
+        let generator = IcapResponseGenerator::default();
+        
+        // Create test data
+        let mut req_headers = HeaderMap::new();
+        req_headers.insert("content-type", "text/html".parse().unwrap());
+        
+        let mut res_headers = HeaderMap::new();
+        res_headers.insert("content-length", "13".parse().unwrap());
+        
+        let req_body = Bytes::from("Request body");
+        let res_body = Bytes::from("Response body");
+        
+        let encapsulated = EncapsulatedData {
+            req_hdr: Some(req_headers),
+            res_hdr: Some(res_headers),
+            req_body: Some(req_body),
+            res_body: Some(res_body),
+            null_body: false,
+        };
+        
+        // Test chunked header serialization
+        let header = generator.serialize_encapsulated_header_chunked(&encapsulated);
+        
+        // Should contain all sections with chunked sizes
+        assert!(header.contains("req-hdr="));
+        assert!(header.contains("res-hdr="));
+        assert!(header.contains("req-body="));
+        assert!(header.contains("res-body="));
+        
+        // Verify format
+        let parts: Vec<&str> = header.split(", ").collect();
+        assert_eq!(parts.len(), 4);
+        
+        // Each part should have the format "section=size"
+        for part in parts {
+            assert!(part.contains("="));
+            let (section, size_str) = part.split_once("=").unwrap();
+            assert!(matches!(section, "req-hdr" | "res-hdr" | "req-body" | "res-body"));
+            assert!(size_str.parse::<usize>().is_ok());
+        }
+    }
+
+    #[test]
+    fn test_ok_modified_chunked_with_encapsulated() {
+        let generator = IcapResponseGenerator::default();
+        
+        // Create test encapsulated data
+        let mut req_headers = HeaderMap::new();
+        req_headers.insert("content-type", "text/html".parse().unwrap());
+        
+        let req_body = Bytes::from("Request body");
+        let res_body = Bytes::from("Response body");
+        
+        let encapsulated = EncapsulatedData {
+            req_hdr: Some(req_headers),
+            res_hdr: None,
+            req_body: Some(req_body),
+            res_body: Some(res_body),
+            null_body: false,
+        };
+        
+        let icap_body = Bytes::from("Modified content");
+        
+        // Create chunked response
+        let response = generator.ok_modified_chunked(Some(encapsulated), icap_body.clone());
+        
+        // Verify response
+        assert_eq!(response.status, StatusCode::OK);
+        assert_eq!(response.body, icap_body);
+        assert!(response.headers.contains_key("transfer-encoding"));
+        assert_eq!(response.headers.get("transfer-encoding").unwrap(), "chunked");
+        assert!(response.headers.contains_key("encapsulated"));
+        
+        // Verify encapsulated header uses chunked sizes
+        let encapsulated_header = response.headers.get("encapsulated").unwrap();
+        let header_str = encapsulated_header.to_str().unwrap();
+        assert!(header_str.contains("req-hdr="));
+        assert!(header_str.contains("req-body="));
+        assert!(header_str.contains("res-body="));
     }
 }
