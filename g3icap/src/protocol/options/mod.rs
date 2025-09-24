@@ -87,7 +87,7 @@ impl OptionsService {
     pub async fn process_request(&self, request: &IcapRequest) -> Result<IcapResponse, IcapError> {
         // Validate that this is an OPTIONS request
         if request.method != crate::protocol::common::IcapMethod::Options {
-            return Err(IcapError::Protocol("Expected OPTIONS method".to_string()));
+            return Err(IcapError::protocol_error("Expected OPTIONS method", "ICAP"));
         }
 
         // Call the handler

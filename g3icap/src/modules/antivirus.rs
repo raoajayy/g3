@@ -1002,14 +1002,13 @@ impl IcapModule for AntivirusModule {
         let scan_result = self.scan_content(&request.body, None).await?;
 
         if scan_result.is_clean {
-            // Allow the request
-            Ok(IcapResponse {
-                status: http::StatusCode::NO_CONTENT,
-                version: request.version,
-                headers: request.headers.clone(),
-                body: request.body.clone(),
-                encapsulated: request.encapsulated.clone(),
-            })
+            // Allow the request - use response generator for proper headers
+            let response_generator = crate::protocol::response_generator::IcapResponseGenerator::with_service_id(
+                "G3ICAP-Antivirus/1.0.0".to_string(),
+                "antivirus-1.0.0".to_string(),
+                Some("antivirus-scanner".to_string())
+            );
+            Ok(response_generator.no_modifications(None))
         } else {
             // Block the request due to threat
             let threat_name = scan_result.threat_name.unwrap_or_else(|| "Unknown".to_string());
@@ -1022,13 +1021,22 @@ impl IcapModule for AntivirusModule {
                 log::warn!("REQMOD request blocked by antivirus: {} - Threat: {}", request.uri, threat_name);
             }
 
-            Ok(IcapResponse {
-                status: http::StatusCode::FORBIDDEN,
-                version: request.version,
-                headers: http::HeaderMap::new(),
-                body: bytes::Bytes::from(format!("Request blocked by antivirus: {}", threat_name)),
-                encapsulated: None,
-            })
+            // Use response generator for proper error response with chunked support
+            let response_generator = crate::protocol::response_generator::IcapResponseGenerator::with_service_id(
+                "G3ICAP-Antivirus/1.0.0".to_string(),
+                "antivirus-1.0.0".to_string(),
+                Some("antivirus-scanner".to_string())
+            );
+            
+            // Use chunked response for large threat descriptions
+            let threat_message = format!("Request blocked by antivirus: {}", threat_name);
+            let should_chunk = response_generator.should_use_chunked_encoding(Some(threat_message.len()));
+            
+            if should_chunk {
+                Ok(response_generator.forbidden_chunked(Some(&threat_message)))
+            } else {
+                Ok(response_generator.forbidden(Some(&threat_message)))
+            }
         }
     }
 
@@ -1041,14 +1049,13 @@ impl IcapModule for AntivirusModule {
         let scan_result = self.scan_content(&request.body, None).await?;
 
         if scan_result.is_clean {
-            // Allow the response
-            Ok(IcapResponse {
-                status: http::StatusCode::NO_CONTENT,
-                version: request.version,
-                headers: request.headers.clone(),
-                body: request.body.clone(),
-                encapsulated: request.encapsulated.clone(),
-            })
+            // Allow the response - use response generator for proper headers
+            let response_generator = crate::protocol::response_generator::IcapResponseGenerator::with_service_id(
+                "G3ICAP-Antivirus/1.0.0".to_string(),
+                "antivirus-1.0.0".to_string(),
+                Some("antivirus-scanner".to_string())
+            );
+            Ok(response_generator.no_modifications(None))
         } else {
             // Block the response due to threat
             let threat_name = scan_result.threat_name.unwrap_or_else(|| "Unknown".to_string());
@@ -1061,13 +1068,22 @@ impl IcapModule for AntivirusModule {
                 log::warn!("RESPMOD request blocked by antivirus: {} - Threat: {}", request.uri, threat_name);
             }
 
-            Ok(IcapResponse {
-                status: http::StatusCode::FORBIDDEN,
-                version: request.version,
-                headers: http::HeaderMap::new(),
-                body: bytes::Bytes::from(format!("Response blocked by antivirus: {}", threat_name)),
-                encapsulated: None,
-            })
+            // Use response generator for proper error response with chunked support
+            let response_generator = crate::protocol::response_generator::IcapResponseGenerator::with_service_id(
+                "G3ICAP-Antivirus/1.0.0".to_string(),
+                "antivirus-1.0.0".to_string(),
+                Some("antivirus-scanner".to_string())
+            );
+            
+            // Use chunked response for large threat descriptions
+            let threat_message = format!("Response blocked by antivirus: {}", threat_name);
+            let should_chunk = response_generator.should_use_chunked_encoding(Some(threat_message.len()));
+            
+            if should_chunk {
+                Ok(response_generator.forbidden_chunked(Some(&threat_message)))
+            } else {
+                Ok(response_generator.forbidden(Some(&threat_message)))
+            }
         }
     }
 

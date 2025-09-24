@@ -3,15 +3,21 @@
  * Copyright 2023-2025 ByteDance and/or its affiliates.
  */
 
-//! Audit operations for ICAP server
+//! Audit operations for ICAP server following g3proxy patterns
+//!
+//! This module provides comprehensive audit operations with detailed
+//! event logging, statistics, and performance monitoring.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 use std::collections::HashMap;
+use std::sync::Arc;
 
+use anyhow::Result;
 use g3_types::metrics::NodeName;
 use serde::{Serialize, Deserialize};
 
-use super::IcapAuditHandle;
+use super::{IcapAuditHandle, AuditHandle};
+use super::registry;
 
 /// Audit event types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -229,4 +235,58 @@ impl IcapAuditOps for DefaultIcapAuditOps {
     fn get_audit_handle(&self) -> &IcapAuditHandle {
         &self.handle
     }
+}
+
+/// Initialize audit handles following g3proxy patterns
+pub async fn initialize_audit_handles() -> Result<()> {
+    // Load audit configurations from registry
+    let configs = registry::get_all_audit_configs().await?;
+    
+    // Create audit handles for each configuration
+    for (name, _config) in configs {
+        let handle = AuditHandle::new(name.clone(), true); // Default to enabled
+        registry::register_audit_handle(name, Arc::new(handle))?;
+    }
+    
+    Ok(())
+}
+
+/// Load all audit handlers
+pub async fn load_all() -> Result<()> {
+    // Initialize audit handles
+    initialize_audit_handles().await?;
+    
+    // Load audit configurations
+    registry::load_all().await?;
+    
+    Ok(())
+}
+
+/// Get audit handle by name
+pub fn get_audit_handle(name: &NodeName) -> Option<Arc<AuditHandle>> {
+    registry::get_audit_handle(name)
+}
+
+/// Get all audit handles
+pub fn get_all_audit_handles() -> HashMap<NodeName, Arc<AuditHandle>, foldhash::fast::FixedState> {
+    registry::get_all_audit_handles()
+}
+
+/// Create a new audit handle
+pub fn create_audit_handle(name: NodeName, enabled: bool) -> Arc<AuditHandle> {
+    Arc::new(AuditHandle::new(name, enabled))
+}
+
+/// Reload audit configurations
+pub async fn reload() -> Result<()> {
+    // Clear existing handles
+    registry::clear_all_handles();
+    
+    // Reload configurations
+    registry::load_all().await?;
+    
+    // Reinitialize handles
+    initialize_audit_handles().await?;
+    
+    Ok(())
 }

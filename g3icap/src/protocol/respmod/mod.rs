@@ -47,7 +47,7 @@ impl RespmodService {
     pub async fn process_request(&self, request: &IcapRequest) -> Result<IcapResponse, IcapError> {
         // Validate that this is a RESPMOD request
         if request.method != IcapMethod::Respmod {
-            return Err(IcapError::Protocol("Expected RESPMOD method".to_string()));
+            return Err(IcapError::protocol_error("Expected RESPMOD method", "ICAP"));
         }
 
         // Call the handler

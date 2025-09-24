@@ -95,6 +95,7 @@ g3-xcrypt.workspace = true
 g3-yaml = { workspace = true, features = ["resolve", "rustls", "openssl", "acl-rule", "http", "route", "dpi", "histogram", "geoip"] }
 g3icap-proto = { path = "proto" }
 regex = "1.10"
+nom = "7.1"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "io-util"] }

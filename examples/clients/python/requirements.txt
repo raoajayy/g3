@@ -1,0 +1,40 @@
+# G3ICAP Python Client Dependencies
+
+# Core dependencies
+requests>=2.31.0
+aiohttp>=3.8.0
+httpx>=0.24.0
+
+# Authentication
+PyJWT>=2.8.0
+cryptography>=41.0.0
+
+# Configuration
+pyyaml>=6.0
+toml>=0.10.2
+python-dotenv>=1.0.0
+
+# Logging and monitoring
+structlog>=23.1.0
+prometheus-client>=0.17.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+pytest-mock>=3.11.0
+
+# Development
+black>=23.7.0
+flake8>=6.0.0
+mypy>=1.5.0
+isort>=5.12.0
+
+# Performance
+uvloop>=0.17.0
+orjson>=3.9.0
+
+# Utilities
+click>=8.1.0
+rich>=13.5.0
+typer>=0.9.0

@@ -1,0 +1,32 @@
+# Minimal G3ICAP Configuration for testing
+
+# Runtime configuration
+runtime:
+  thread_number: 2
+
+# Worker configuration  
+worker:
+  thread_number: 2
+
+# Logging configuration
+log: stdout
+
+# Statistics configuration
+stat:
+  target:
+    udp: 127.0.0.1:8125
+  emit_interval: 2s
+  prefix: "g3icap"
+
+# Server configuration
+server:
+  - type: IcapServer
+    name: icap_main
+    listen: 0.0.0.0:1344
+    max_connections: 1000
+    connection_timeout: 30
+    request_timeout: 60
+    enable_stats: true
+    stats_port: 8080
+    enable_metrics: true
+    metrics_port: 9090

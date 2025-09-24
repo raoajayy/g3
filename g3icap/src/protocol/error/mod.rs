@@ -106,10 +106,17 @@ impl ErrorResponseBuilder {
 /// Convert IcapError to appropriate ICAP response
 pub fn error_to_response(error: &IcapError) -> IcapResponse {
     match error {
-        IcapError::Config(msg) => ErrorResponseBuilder::internal_server_error(&format!("Configuration error: {}", msg)),
-        IcapError::Protocol(msg) => ErrorResponseBuilder::bad_request(&format!("Protocol error: {}", msg)),
-        IcapError::Network(msg) => ErrorResponseBuilder::bad_gateway(&format!("Network error: {}", msg)),
-        IcapError::Service(msg) => ErrorResponseBuilder::service_unavailable(&format!("Service error: {}", msg)),
+        IcapError::Config { message, .. } => ErrorResponseBuilder::internal_server_error(&format!("Configuration error: {}", message)),
+        IcapError::Protocol { message, .. } => ErrorResponseBuilder::bad_request(&format!("Protocol error: {}", message)),
+        IcapError::Network { message, .. } => ErrorResponseBuilder::bad_gateway(&format!("Network error: {}", message)),
+        IcapError::Service { message, .. } => ErrorResponseBuilder::service_unavailable(&format!("Service error: {}", message)),
+        IcapError::Auth { message, .. } => ErrorResponseBuilder::bad_request(&format!("Authentication error: {}", message)),
+        IcapError::Authorization { message, .. } => ErrorResponseBuilder::bad_request(&format!("Authorization error: {}", message)),
+        IcapError::Audit { message, .. } => ErrorResponseBuilder::internal_server_error(&format!("Audit error: {}", message)),
+        IcapError::ContentFilter { message, .. } => ErrorResponseBuilder::bad_request(&format!("Content filter error: {}", message)),
+        IcapError::Antivirus { message, .. } => ErrorResponseBuilder::bad_request(&format!("Antivirus error: {}", message)),
+        IcapError::Timeout { message, .. } => ErrorResponseBuilder::bad_gateway(&format!("Timeout error: {}", message)),
+        IcapError::ResourceExhausted { message, .. } => ErrorResponseBuilder::service_unavailable(&format!("Resource exhausted: {}", message)),
         IcapError::Io(_) => ErrorResponseBuilder::internal_server_error("I/O error occurred"),
         IcapError::Http(_) => ErrorResponseBuilder::bad_request("HTTP error occurred"),
         IcapError::Url(_) => ErrorResponseBuilder::bad_request("Invalid URL"),

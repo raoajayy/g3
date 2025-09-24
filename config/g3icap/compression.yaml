@@ -1,0 +1,257 @@
+# G3ICAP Compression Configuration
+# 
+# This configuration file demonstrates how to configure compression
+# for ICAP messages in G3ICAP.
+
+# Global compression settings
+compression:
+  # Enable compression
+  enabled: true
+  
+  # Minimum size threshold for compression (bytes)
+  # Messages smaller than this will not be compressed
+  min_size: 1024
+  
+  # Maximum size threshold for compression (bytes)
+  # Messages larger than this will not be compressed (optional)
+  max_size: 10485760  # 10MB
+  
+  # Default compression algorithm
+  # Options: gzip, deflate, brotli, zstd, identity
+  default_algorithm: gzip
+  
+  # Default compression level (1-9)
+  # 1 = fastest compression, 9 = best compression
+  default_level: 6
+  
+  # Supported compression algorithms
+  supported_algorithms:
+    - gzip
+    - deflate
+    - identity
+    # - brotli  # Uncomment if brotli feature is enabled
+    # - zstd    # Uncomment if zstd feature is enabled
+  
+  # Algorithm-specific settings
+  algorithm_settings:
+    gzip:
+      level: 6
+      enabled: true
+      parameters:
+        window_bits: "15"
+        mem_level: "8"
+    
+    deflate:
+      level: 6
+      enabled: true
+      parameters:
+        window_bits: "15"
+        mem_level: "8"
+    
+    brotli:
+      level: 6
+      enabled: false  # Disabled by default, requires brotli feature
+      parameters:
+        quality: "6"
+        window_size: "22"
+    
+    zstd:
+      level: 6
+      enabled: false  # Disabled by default, requires zstd feature
+      parameters:
+        compression_level: "6"
+        strategy: "default"
+    
+    identity:
+      level: 1
+      enabled: true
+      parameters: {}
+  
+  # Quality settings for different data sizes
+  quality_settings:
+    # Fast compression level (1-3) for small data
+    fast_level: 1
+    # Balanced compression level (4-6) for medium data
+    balanced_level: 6
+    # Best compression level (7-9) for large data
+    best_level: 9
+    
+    # Size thresholds for quality selection
+    fast_threshold: 1024      # 1KB
+    balanced_threshold: 65536 # 64KB
+  
+  # Streaming compression settings
+  enable_streaming: true
+  stream_buffer_size: 65536  # 64KB
+  
+  # Enable compression metrics collection
+  enable_metrics: true
+
+# ICAP-specific compression settings
+icap_compression:
+  # Compress REQMOD requests
+  compress_reqmod: true
+  
+  # Compress RESPMOD responses
+  compress_respmod: true
+  
+  # Compress OPTIONS responses
+  compress_options: false  # Usually not needed for OPTIONS
+  
+  # Minimum body size for REQMOD compression
+  reqmod_min_size: 512
+  
+  # Minimum body size for RESPMOD compression
+  respmod_min_size: 1024
+  
+  # Compression headers to add
+  add_compression_headers: true
+  
+  # Headers to add when compressing
+  compression_headers:
+    - "Content-Encoding"
+    - "X-Original-Content-Length"
+    - "X-Compression-Ratio"
+  
+  # Headers to remove when decompressing
+  decompression_headers:
+    - "Content-Encoding"
+    - "X-Original-Content-Length"
+    - "X-Compression-Ratio"
+
+# Content-type specific compression settings
+content_type_compression:
+  # Compress text content
+  text:
+    enabled: true
+    algorithms: [gzip, deflate]
+    min_size: 512
+    max_size: 10485760  # 10MB
+  
+  # Compress HTML content
+  html:
+    enabled: true
+    algorithms: [gzip, deflate]
+    min_size: 1024
+    max_size: 10485760  # 10MB
+  
+  # Compress CSS content
+  css:
+    enabled: true
+    algorithms: [gzip, deflate]
+    min_size: 512
+    max_size: 10485760  # 10MB
+  
+  # Compress JavaScript content
+  javascript:
+    enabled: true
+    algorithms: [gzip, deflate]
+    min_size: 512
+    max_size: 10485760  # 10MB
+  
+  # Compress JSON content
+  json:
+    enabled: true
+    algorithms: [gzip, deflate]
+    min_size: 1024
+    max_size: 10485760  # 10MB
+  
+  # Compress XML content
+  xml:
+    enabled: true
+    algorithms: [gzip, deflate]
+    min_size: 1024
+    max_size: 10485760  # 10MB
+  
+  # Don't compress binary content
+  binary:
+    enabled: false
+    algorithms: [identity]
+    min_size: 0
+    max_size: 0
+  
+  # Don't compress already compressed content
+  compressed:
+    enabled: false
+    algorithms: [identity]
+    min_size: 0
+    max_size: 0
+
+# Performance tuning
+performance:
+  # Use streaming compression for large files
+  use_streaming: true
+  
+  # Chunk size for streaming compression
+  chunk_size: 65536  # 64KB
+  
+  # Number of compression threads
+  compression_threads: 4
+  
+  # Compression queue size
+  compression_queue_size: 1000
+  
+  # Enable compression caching
+  enable_caching: true
+  
+  # Cache size for compressed content
+  cache_size: 1000
+  
+  # Cache TTL (seconds)
+  cache_ttl: 3600
+
+# Monitoring and metrics
+metrics:
+  # Enable compression metrics
+  enabled: true
+  
+  # Metrics collection interval (seconds)
+  collection_interval: 60
+  
+  # Export metrics to StatsD
+  statsd:
+    enabled: true
+    prefix: "g3icap.compression"
+    host: "127.0.0.1"
+    port: 8125
+  
+  # Export metrics to Prometheus
+  prometheus:
+    enabled: true
+    endpoint: "/metrics"
+    port: 9090
+  
+  # Export metrics to JSON file
+  json_file:
+    enabled: true
+    path: "/var/log/g3icap/compression_metrics.json"
+    rotation: "daily"
+  
+  # Export metrics to CSV file
+  csv_file:
+    enabled: false
+    path: "/var/log/g3icap/compression_metrics.csv"
+    rotation: "daily"
+
+# Logging configuration
+logging:
+  # Log compression operations
+  log_compression: true
+  
+  # Log decompression operations
+  log_decompression: true
+  
+  # Log compression ratios
+  log_ratios: true
+  
+  # Log compression times
+  log_times: true
+  
+  # Log compression errors
+  log_errors: true
+  
+  # Log level for compression
+  level: "info"
+  
+  # Log format
+  format: "json"

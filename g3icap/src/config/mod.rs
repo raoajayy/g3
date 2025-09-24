@@ -8,10 +8,21 @@ use std::path::Path;
 use anyhow::anyhow;
 use yaml_rust::{Yaml, yaml};
 
+// Core configuration modules
 pub mod audit;
 pub mod auth;
 pub mod server;
 pub mod log;
+
+// Advanced configuration features following g3proxy patterns
+mod graphviz;
+mod mermaid;
+mod plantuml;
+
+// Re-export visualization tools
+pub use graphviz::graphviz_graph;
+pub use mermaid::mermaid_graph;
+pub use plantuml::plantuml_graph;
 
 pub fn load() -> anyhow::Result<&'static Path> {
     let config_file =

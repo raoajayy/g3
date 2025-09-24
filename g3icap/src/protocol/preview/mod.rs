@@ -49,10 +49,10 @@ impl PreviewHandler {
     fn get_preview_size(&self, request: &IcapRequest) -> IcapResult<usize> {
         if let Some(preview_header) = request.headers.get("preview") {
             let preview_str = preview_header.to_str()
-                .map_err(|e| IcapError::Protocol(format!("Invalid preview header: {}", e)))?;
+                .map_err(|e| IcapError::protocol_simple(format!("Invalid preview header: {}", e)))?;
             
             preview_str.parse::<usize>()
-                .map_err(|e| IcapError::Protocol(format!("Invalid preview size: {}", e)))
+                .map_err(|e| IcapError::protocol_simple(format!("Invalid preview size: {}", e)))
         } else {
             Ok(0)
         }
@@ -63,10 +63,10 @@ impl PreviewHandler {
         // Check Content-Length header
         if let Some(length_header) = request.headers.get("content-length") {
             let length_str = length_header.to_str()
-                .map_err(|e| IcapError::Protocol(format!("Invalid content-length header: {}", e)))?;
+                .map_err(|e| IcapError::protocol_simple(format!("Invalid content-length header: {}", e)))?;
             
             return length_str.parse::<usize>()
-                .map_err(|e| IcapError::Protocol(format!("Invalid content length: {}", e)));
+                .map_err(|e| IcapError::protocol_simple(format!("Invalid content length: {}", e)));
         }
 
         // Check encapsulated body size

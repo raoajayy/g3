@@ -1,0 +1,181 @@
+# ISTag Configuration
+# 
+# This configuration file defines ISTag management settings for the G3ICAP server
+# according to RFC 3507 specifications.
+
+# Enable ISTag functionality
+enabled: true
+
+# Service identification
+service:
+  id: "g3icap"
+  name: "G3ICAP Service"
+  version: "1.0.0"
+  description: "G3ICAP ICAP Server with ISTag Management"
+  capabilities:
+    - "REQMOD"
+    - "RESPMOD"
+    - "OPTIONS"
+    - "PREVIEW"
+    - "CACHING"
+    - "COMPRESSION"
+    - "AUTHENTICATION"
+    - "MONITORING"
+
+# ISTag generation settings
+generation:
+  enabled: true
+  default_format: "weak"  # weak, strong, custom
+  include_timestamp: true
+  include_service_info: true
+  include_metadata: true
+  custom_prefix: "g3icap"
+  custom_suffix: "istag"
+  max_metadata_size: 1024
+  max_istag_length: 256
+
+# ISTag validation settings
+validation:
+  enabled: true
+  strict_mode: true
+  validate_format: true
+  validate_expiration: true
+  validate_service_id: true
+  validate_version: true
+  validate_metadata: true
+  max_validation_errors: 10
+  allow_unknown_metadata: false
+
+# ISTag caching settings
+cache:
+  enabled: true
+  max_size: 10000
+  default_ttl_seconds: 3600
+  cleanup_interval_seconds: 300
+  eviction_policy: "lru"  # lru, lfu, fifo, ttl
+  compression_enabled: true
+  compression_threshold: 1024
+  compression_algorithm: "gzip"
+
+# ISTag metrics settings
+metrics:
+  enabled: true
+  collection_interval_seconds: 60
+  retention_days: 30
+  export_formats:
+    - "json"
+    - "csv"
+    - "prometheus"
+  export_interval_seconds: 300
+  detailed_metrics: true
+  performance_metrics: true
+  error_metrics: true
+  cache_metrics: true
+
+# ISTag security settings
+security:
+  enabled: true
+  require_authentication: false
+  allowed_services: []  # Empty means all services allowed
+  blocked_services: []
+  max_istag_per_service: 1000
+  rate_limit_per_second: 100
+  rate_limit_burst: 200
+
+# ISTag logging settings
+logging:
+  enabled: true
+  log_level: "info"  # debug, info, warn, error
+  log_generation: true
+  log_validation: true
+  log_cache_operations: true
+  log_metrics: false
+  log_errors: true
+  log_warnings: true
+  structured_logging: true
+
+# ISTag monitoring settings
+monitoring:
+  enabled: true
+  health_check_interval_seconds: 30
+  performance_monitoring: true
+  error_monitoring: true
+  cache_monitoring: true
+  service_monitoring: true
+  alerting:
+    enabled: true
+    error_threshold: 0.05  # 5% error rate
+    performance_threshold: 1000  # 1000ms response time
+    cache_hit_ratio_threshold: 0.8  # 80% cache hit ratio
+
+# ISTag debugging settings
+debug:
+  enabled: false
+  verbose_logging: false
+  trace_operations: false
+  profile_performance: false
+  memory_usage_tracking: false
+  detailed_error_messages: false
+
+# ISTag integration settings
+integration:
+  # Integration with other G3ICAP modules
+  icap_integration: true
+  cache_integration: true
+  monitoring_integration: true
+  security_integration: true
+  
+  # External service integration
+  external_services: []
+  service_discovery: false
+  load_balancing: false
+  
+  # API integration
+  rest_api_enabled: true
+  rest_api_port: 8080
+  rest_api_path: "/api/istag"
+  rest_api_auth_required: false
+
+# ISTag performance settings
+performance:
+  # Threading and concurrency
+  max_concurrent_operations: 100
+  operation_timeout_seconds: 30
+  cache_operation_timeout_seconds: 5
+  
+  # Memory management
+  max_memory_usage_mb: 512
+  memory_cleanup_interval_seconds: 60
+  memory_compression_threshold: 1024
+  
+  # Performance optimization
+  enable_compression: true
+  enable_caching: true
+  enable_metrics: true
+  enable_monitoring: true
+  
+  # Batch operations
+  batch_size: 100
+  batch_timeout_seconds: 1
+  enable_batch_processing: true
+
+# ISTag compliance settings
+compliance:
+  # RFC 3507 compliance
+  rfc3507_compliant: true
+  strict_rfc_compliance: true
+  allow_extensions: true
+  
+  # ICAP compliance
+  icap_compliant: true
+  icap_version: "1.0"
+  
+  # Security compliance
+  security_compliant: true
+  encryption_required: false
+  authentication_required: false
+  
+  # Performance compliance
+  performance_compliant: true
+  response_time_limit_ms: 1000
+  throughput_limit_rps: 1000

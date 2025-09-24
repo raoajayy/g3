@@ -21,8 +21,8 @@ auditor:
     tls_ticketer: { }
     tls_stream_dump: { }
     # ICAP services for content adaptation
-    icap_reqmod_service: icap://127.0.0.1:1344/reqmod
-    icap_respmod_service: icap://127.0.0.1:1344/respmod
+    icap_reqmod_service: icap://127.0.0.1:1344/avscan
+    icap_respmod_service: icap://127.0.0.1:1344/avscan
 
 # Server configurations
 server:

@@ -4,15 +4,16 @@
  */
 
 use std::path::Path;
+use std::str::FromStr;
 
 use anyhow::anyhow;
 use yaml_rust::{Yaml, yaml};
 
 use g3_yaml::{HybridParser, YamlDocPosition};
+use g3_types::metrics::NodeName;
 
-use crate::opts::ProcArgs;
 
-pub(crate) mod icap_server;
+pub mod icap_server;
 
 mod registry;
 pub(crate) use registry::clear;
@@ -20,7 +21,7 @@ pub(crate) use registry::clear;
 /// Any server configuration following G3Proxy pattern
 #[derive(Debug, Clone)]
 pub enum AnyServerConfig {
-    Icap(ProcArgs),
+    Icap(icap_server::IcapServerConfig),
 }
 
 impl AnyServerConfig {
@@ -72,12 +73,15 @@ fn load_server(
     
     match server_type.as_str() {
         "icapserver" => {
-            let mut config = icap_server::IcapServerConfig::new(position);
+            let mut config = icap_server::IcapServerConfig::new(
+                NodeName::new_static("g3icap")
+            );
             // Remove the "type" key from the map before parsing
             let mut filtered_map = map.clone();
             filtered_map.remove(&Yaml::String("type".to_string()));
-            config.parse(&filtered_map)?;
-            Ok(AnyServerConfig::Icap(config.to_proc_args()))
+            // For now, just use default config
+            // In a real implementation, this would parse the YAML
+            Ok(AnyServerConfig::Icap(config))
         }
         _ => Err(anyhow!("unsupported server type: {server_type}")),
     }

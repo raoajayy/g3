@@ -392,46 +392,50 @@ impl ContentFilterModule {
         Ok(None)
     }
 
-    /// Create blocking response
+    /// Create blocking response using proper response generator
     fn create_blocking_response(&self, reason: &BlockReason) -> IcapResponse {
-        let (status, message) = match &self.config.blocking_action {
-            BlockingAction::Forbidden => (http::StatusCode::FORBIDDEN, "Content blocked by filter"),
-            BlockingAction::NotFound => (http::StatusCode::NOT_FOUND, "Content not found"),
+        let response_generator = crate::protocol::response_generator::IcapResponseGenerator::with_service_id(
+            "G3ICAP-ContentFilter/1.0.0".to_string(),
+            "content-filter-1.0.0".to_string(),
+            Some("content-filter".to_string())
+        );
+
+        match &self.config.blocking_action {
+            BlockingAction::Forbidden => {
+                let message = format!("Content blocked by filter: {}", reason);
+                let should_chunk = response_generator.should_use_chunked_encoding(Some(message.len()));
+                if should_chunk {
+                    response_generator.forbidden_chunked(Some(&message))
+                } else {
+                    response_generator.forbidden(Some(&message))
+                }
+            }
+            BlockingAction::NotFound => {
+                let message = format!("Content not found: {}", reason);
+                response_generator.not_found(Some(&message))
+            }
             BlockingAction::Custom(code) => {
                 let status = http::StatusCode::from_u16(*code).unwrap_or(http::StatusCode::FORBIDDEN);
-                (status, "Content blocked by filter")
+                let message = format!("Content blocked by filter: {}", reason);
+                response_generator.from_status_code(status, Some(&message))
             }
             BlockingAction::Redirect(url) => {
-                let mut headers = http::HeaderMap::new();
-                headers.insert("Location", url.parse().unwrap());
-                return IcapResponse {
-                    status: http::StatusCode::FOUND,
-                    version: http::Version::HTTP_11,
-                    headers,
-                    body: bytes::Bytes::new(),
-                    encapsulated: None,
-                };
+                response_generator.found(url)
             }
             BlockingAction::Replace(content) => {
-                return IcapResponse {
-                    status: http::StatusCode::NO_CONTENT,
-                    version: http::Version::HTTP_11,
-                    headers: http::HeaderMap::new(),
-                    body: bytes::Bytes::from(content.clone()),
-                    encapsulated: None,
-                };
+                // For content replacement, we need to create a modified response
+                let should_chunk = response_generator.should_use_chunked_encoding(Some(content.len()));
+                if should_chunk {
+                    response_generator.create_chunked_response(
+                        http::StatusCode::OK,
+                        None,
+                        bytes::Bytes::from(content.clone()),
+                        "text/html"
+                    )
+                } else {
+                    response_generator.ok_modified(None, bytes::Bytes::from(content.clone()))
+                }
             }
-        };
-
-        let message = self.config.custom_message.as_deref().unwrap_or(message);
-        let detailed_message = format!("{} - Reason: {}", message, reason);
-
-        IcapResponse {
-            status,
-            version: http::Version::HTTP_11,
-            headers: http::HeaderMap::new(),
-            body: bytes::Bytes::from(detailed_message),
-            encapsulated: None,
         }
     }
 
@@ -565,14 +569,13 @@ impl IcapModule for ContentFilterModule {
                 Ok(self.create_blocking_response(&reason))
             }
             None => {
-                // Allow the request to pass through
-                Ok(IcapResponse {
-                    status: http::StatusCode::NO_CONTENT,
-                    version: request.version,
-                    headers: request.headers.clone(),
-                    body: request.body.clone(),
-                    encapsulated: request.encapsulated.clone(),
-                })
+                // Allow the request to pass through - use response generator for proper headers
+                let response_generator = crate::protocol::response_generator::IcapResponseGenerator::with_service_id(
+                    "G3ICAP-ContentFilter/1.0.0".to_string(),
+                    "content-filter-1.0.0".to_string(),
+                    Some("content-filter".to_string())
+                );
+                Ok(response_generator.no_modifications(None))
             }
         }
     }
@@ -590,14 +593,13 @@ impl IcapModule for ContentFilterModule {
                 Ok(self.create_blocking_response(&reason))
             }
             None => {
-                // Allow the response to pass through
-                Ok(IcapResponse {
-                    status: http::StatusCode::NO_CONTENT,
-                    version: request.version,
-                    headers: request.headers.clone(),
-                    body: request.body.clone(),
-                    encapsulated: request.encapsulated.clone(),
-                })
+                // Allow the response to pass through - use response generator for proper headers
+                let response_generator = crate::protocol::response_generator::IcapResponseGenerator::with_service_id(
+                    "G3ICAP-ContentFilter/1.0.0".to_string(),
+                    "content-filter-1.0.0".to_string(),
+                    Some("content-filter".to_string())
+                );
+                Ok(response_generator.no_modifications(None))
             }
         }
     }

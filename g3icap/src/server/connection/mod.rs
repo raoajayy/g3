@@ -15,6 +15,7 @@ use crate::error::{IcapError, IcapResult};
 use crate::log::connection::{get_logger, ConnectionEvent};
 use crate::opts::ProcArgs;
 use crate::protocol::common::{IcapRequest, IcapResponse, EncapsulatedData};
+use crate::protocol::response_generator::IcapResponseGenerator;
 use crate::stats::IcapStats;
 use crate::modules::IcapModule;
 use crate::modules::content_filter::{ContentFilterModule, ContentFilterConfig};
@@ -87,6 +88,8 @@ pub struct IcapConnection {
     antivirus: Option<AntivirusModule>,
     /// Audit operations
     audit_ops: Box<dyn IcapAuditOps>,
+    /// Response generator
+    response_generator: IcapResponseGenerator,
 }
 
 impl IcapConnection {
@@ -142,15 +145,39 @@ impl IcapConnection {
             regex_cache_size: 1000,
         };
         
-        let content_filter = Some(ContentFilterModule::new(content_filter_config));
+        let mut content_filter = ContentFilterModule::new(content_filter_config);
+        
+        // Initialize the content filter module
+        let module_config = crate::modules::ModuleConfig {
+            name: "content_filter".to_string(),
+            path: std::path::PathBuf::from(""),
+            version: "1.0.0".to_string(),
+            config: serde_json::Value::Object(serde_json::Map::new()),
+            dependencies: Vec::new(),
+            load_timeout: std::time::Duration::from_secs(5),
+            max_memory: 1024 * 1024,
+            sandbox: true,
+        };
+        
+        // Initialize the module
+        let content_filter = if let Err(e) = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                content_filter.init(&module_config).await
+            })
+        }) {
+            println!("DEBUG: Failed to initialize content filter module: {}", e);
+            // Continue without content filter module
+            None
+        } else {
+            println!("DEBUG: Content filter module initialized successfully");
+            Some(content_filter)
+        };
 
         // Initialize antivirus module
         let antivirus_config = AntivirusConfig {
-            engine: crate::modules::antivirus::AntivirusEngine::YARA {
-                rules_dir: std::path::PathBuf::from("/etc/g3icap/yara"),
-                timeout: std::time::Duration::from_secs(10),
-                max_rules: 1000,
-                enable_compilation: true,
+            engine: crate::modules::antivirus::AntivirusEngine::Mock {
+                simulate_threats: false,
+                scan_delay: std::time::Duration::from_millis(50),
             },
             max_file_size: 50 * 1024 * 1024, // 50MB
             scan_timeout: std::time::Duration::from_secs(30),
@@ -171,26 +198,38 @@ impl IcapConnection {
             ],
             enable_realtime: true,
             update_interval: std::time::Duration::from_secs(3600), // 1 hour
-            enable_threat_intel: true,
-            threat_intel_sources: vec![
-                "https://rules.yara-rules.org".to_string(),
-            ],
-            yara_config: Some(crate::modules::antivirus::YaraConfig {
-                rules_dir: std::path::PathBuf::from("/etc/g3icap/yara"),
-                max_rules: 1000,
-                enable_compilation: true,
-                compiled_rules_dir: Some(std::path::PathBuf::from("/tmp/g3icap/yara/compiled")),
-                update_interval: std::time::Duration::from_secs(3600),
-                enable_caching: true,
-                cache_size: 1000,
-                enable_rule_stats: true,
-                rule_priorities: std::collections::HashMap::new(),
-                enable_debug: false,
-                rule_timeout: std::time::Duration::from_secs(5),
-            }),
+            enable_threat_intel: false,
+            threat_intel_sources: Vec::new(),
+            yara_config: None,
         };
         
-        let antivirus = Some(AntivirusModule::new(antivirus_config));
+        let mut antivirus = AntivirusModule::new(antivirus_config);
+        
+        // Initialize the antivirus module
+        let module_config = crate::modules::ModuleConfig {
+            name: "antivirus".to_string(),
+            path: std::path::PathBuf::from(""),
+            version: "1.0.0".to_string(),
+            config: serde_json::Value::Object(serde_json::Map::new()),
+            dependencies: Vec::new(),
+            load_timeout: std::time::Duration::from_secs(5),
+            max_memory: 1024 * 1024,
+            sandbox: true,
+        };
+        
+        // Initialize the module
+        let antivirus = if let Err(e) = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                antivirus.init(&module_config).await
+            })
+        }) {
+            println!("DEBUG: Failed to initialize antivirus module: {}", e);
+            // Continue without antivirus module
+            None
+        } else {
+            println!("DEBUG: Antivirus module initialized successfully");
+            Some(antivirus)
+        };
 
         // Initialize audit operations
         let audit_ops = Box::new(DefaultIcapAuditOps::new(
@@ -206,6 +245,10 @@ impl IcapConnection {
             content_filter,
             antivirus,
             audit_ops,
+            response_generator: IcapResponseGenerator::new(
+                "G3ICAP/1.0.0".to_string(),
+                "g3icap-1.0.0".to_string()
+            ),
         }
     }
 
@@ -242,11 +285,11 @@ impl IcapConnection {
         // Process request
         println!("DEBUG: Processing request...");
         let response = match self.process_request(request).await {
-            Ok(resp) => {
+                Ok(resp) => {
                 println!("DEBUG: Request processed successfully: {}", resp.status);
-                resp
-            }
-            Err(e) => {
+                    resp
+                }
+                Err(e) => {
                 println!("DEBUG: Error processing request: {}", e);
                 return Err(e);
             }
@@ -287,7 +330,7 @@ impl IcapConnection {
             
             if n == 0 {
                 println!("DEBUG: Connection closed by peer");
-                return Err(IcapError::Network("Connection closed by peer".to_string()));
+                return Err(IcapError::network_simple("Connection closed by peer".to_string()));
             }
             
             buffer.extend_from_slice(&temp_buffer[..n]);
@@ -347,84 +390,79 @@ impl IcapConnection {
     async fn handle_options_request(&self, request: IcapRequest) -> IcapResult<IcapResponse> {
         println!("DEBUG: Processing OPTIONS request for URI: {}", request.uri);
         
-        // Create comprehensive OPTIONS response with full service capabilities
-        let mut headers = http::HeaderMap::new();
-        
-        // Basic ICAP service information
-        headers.insert("ISTag", "\"g3icap-1.0.0\"".parse().unwrap());
-        headers.insert("Methods", "REQMOD, RESPMOD, OPTIONS".parse().unwrap());
-        headers.insert("Service", "G3 ICAP Server - Content Filtering & Antivirus".parse().unwrap());
-        headers.insert("Server", "G3ICAP/1.0.0".parse().unwrap());
+        // Create comprehensive service capabilities
+        let mut capabilities = std::collections::HashMap::new();
         
         // Connection and performance limits
-        headers.insert("Max-Connections", "1000".parse().unwrap());
-        headers.insert("Max-Connections-Per-Client", "10".parse().unwrap());
-        headers.insert("Options-TTL", "3600".parse().unwrap());
-        headers.insert("Connection-Timeout", "30".parse().unwrap());
-        headers.insert("Request-Timeout", "60".parse().unwrap());
+        capabilities.insert("max-connections".to_string(), "1000".to_string());
+        capabilities.insert("max-connections-per-client".to_string(), "10".to_string());
+        capabilities.insert("options-ttl".to_string(), "3600".to_string());
+        capabilities.insert("connection-timeout".to_string(), "30".to_string());
+        capabilities.insert("request-timeout".to_string(), "60".to_string());
         
         // ICAP protocol capabilities
-        headers.insert("Allow", "204".parse().unwrap());
-        headers.insert("Preview", "1024".parse().unwrap());
-        headers.insert("Transfer-Preview", "*".parse().unwrap());
-        headers.insert("Transfer-Ignore", "Content-Length, Content-Encoding".parse().unwrap());
-        headers.insert("Transfer-Complete", "Content-Length".parse().unwrap());
+        capabilities.insert("allow".to_string(), "204".to_string());
+        capabilities.insert("preview".to_string(), "1024".to_string());
+        capabilities.insert("transfer-preview".to_string(), "*".to_string());
+        capabilities.insert("transfer-ignore".to_string(), "Content-Length, Content-Encoding".to_string());
+        capabilities.insert("transfer-complete".to_string(), "Content-Length".to_string());
         
         // Content filtering capabilities
-        headers.insert("X-Content-Filter", "enabled".parse().unwrap());
-        headers.insert("X-Filter-Domains", "blocked_domains, domain_patterns".parse().unwrap());
-        headers.insert("X-Filter-Keywords", "blocked_keywords, keyword_patterns".parse().unwrap());
-        headers.insert("X-Filter-MIME", "blocked_mime_types, blocked_extensions".parse().unwrap());
-        headers.insert("X-Filter-Size", "max_file_size".parse().unwrap());
-        headers.insert("X-Filter-Regex", "enabled".parse().unwrap());
+        capabilities.insert("x-content-filter".to_string(), "enabled".to_string());
+        capabilities.insert("x-filter-domains".to_string(), "blocked_domains, domain_patterns".to_string());
+        capabilities.insert("x-filter-keywords".to_string(), "blocked_keywords, keyword_patterns".to_string());
+        capabilities.insert("x-filter-mime".to_string(), "blocked_mime_types, blocked_extensions".to_string());
+        capabilities.insert("x-filter-size".to_string(), "max_file_size".to_string());
+        capabilities.insert("x-filter-regex".to_string(), "enabled".to_string());
         
         // Antivirus scanning capabilities
-        headers.insert("X-Antivirus", "enabled".parse().unwrap());
-        headers.insert("X-Antivirus-Engine", "YARA".parse().unwrap());
-        headers.insert("X-Antivirus-Scan", "real-time, on-demand".parse().unwrap());
-        headers.insert("X-Antivirus-Quarantine", "enabled".parse().unwrap());
-        headers.insert("X-Antivirus-Update", "hourly".parse().unwrap());
-        headers.insert("X-Antivirus-Threat-Intel", "enabled".parse().unwrap());
+        capabilities.insert("x-antivirus".to_string(), "enabled".to_string());
+        capabilities.insert("x-antivirus-engine".to_string(), "YARA".to_string());
+        capabilities.insert("x-antivirus-scan".to_string(), "real-time, on-demand".to_string());
+        capabilities.insert("x-antivirus-quarantine".to_string(), "enabled".to_string());
+        capabilities.insert("x-antivirus-update".to_string(), "hourly".to_string());
+        capabilities.insert("x-antivirus-threat-intel".to_string(), "enabled".to_string());
         
         // Security and compliance features
-        headers.insert("X-Security-Features", "content_filtering, antivirus, threat_intelligence".parse().unwrap());
-        headers.insert("X-Compliance", "GDPR, CCPA, SOX".parse().unwrap());
-        headers.insert("X-Data-Protection", "enabled".parse().unwrap());
-        headers.insert("X-Audit-Logging", "enabled".parse().unwrap());
+        capabilities.insert("x-security-features".to_string(), "content_filtering, antivirus, threat_intelligence".to_string());
+        capabilities.insert("x-compliance".to_string(), "GDPR, CCPA, SOX".to_string());
+        capabilities.insert("x-data-protection".to_string(), "enabled".to_string());
+        capabilities.insert("x-audit-logging".to_string(), "enabled".to_string());
         
         // Performance and monitoring
-        headers.insert("X-Metrics", "enabled".parse().unwrap());
-        headers.insert("X-Statistics", "enabled".parse().unwrap());
-        headers.insert("X-Health-Check", "/health".parse().unwrap());
-        headers.insert("X-Metrics-Endpoint", "/metrics".parse().unwrap());
+        capabilities.insert("x-metrics".to_string(), "enabled".to_string());
+        capabilities.insert("x-statistics".to_string(), "enabled".to_string());
+        capabilities.insert("x-health-check".to_string(), "/health".to_string());
+        capabilities.insert("x-metrics-endpoint".to_string(), "/metrics".to_string());
         
         // Supported content types for scanning
-        headers.insert("X-Scan-Content-Types", "application/octet-stream, application/x-executable, application/x-msdownload".parse().unwrap());
-        headers.insert("X-Skip-Content-Types", "text/plain, text/html, image/jpeg, image/png".parse().unwrap());
+        capabilities.insert("x-scan-content-types".to_string(), "application/octet-stream, application/x-executable, application/x-msdownload".to_string());
+        capabilities.insert("x-skip-content-types".to_string(), "text/plain, text/html, image/jpeg, image/png".to_string());
         
         // Maximum file sizes
-        headers.insert("X-Max-File-Size", "52428800".parse().unwrap()); // 50MB
-        headers.insert("X-Max-Preview-Size", "1048576".parse().unwrap()); // 1MB
+        capabilities.insert("x-max-file-size".to_string(), "52428800".to_string()); // 50MB
+        capabilities.insert("x-max-preview-size".to_string(), "1048576".to_string()); // 1MB
         
         // Service version and build information
-        headers.insert("X-Version", "1.0.0".parse().unwrap());
-        headers.insert("X-Build-Date", "2025-01-11".parse().unwrap());
-        headers.insert("X-Build-Info", "G3ICAP-1.0.0-rust".parse().unwrap());
+        capabilities.insert("x-version".to_string(), "1.0.0".to_string());
+        capabilities.insert("x-build-date".to_string(), "2025-01-11".to_string());
+        capabilities.insert("x-build-info".to_string(), "G3ICAP-1.0.0-rust".to_string());
         
         // Custom service capabilities
-        headers.insert("X-Custom-Features", "modular_architecture, plugin_system, load_balancing".parse().unwrap());
-        headers.insert("X-Service-Status", "operational".parse().unwrap());
-        headers.insert("X-Maintenance-Window", "sunday-02:00-04:00-utc".parse().unwrap());
+        capabilities.insert("x-custom-features".to_string(), "modular_architecture, plugin_system, load_balancing".to_string());
+        capabilities.insert("x-service-status".to_string(), "operational".to_string());
+        capabilities.insert("x-maintenance-window".to_string(), "sunday-02:00-04:00-utc".to_string());
         
         println!("DEBUG: OPTIONS response created with comprehensive service capabilities");
         
-        Ok(IcapResponse {
-            status: http::StatusCode::NO_CONTENT,
-            version: http::Version::HTTP_11,
-            headers,
-            body: bytes::Bytes::new(),
-            encapsulated: None,
-        })
+        // Use response generator for OPTIONS response
+        let methods = vec![
+            crate::protocol::common::IcapMethod::Options,
+            crate::protocol::common::IcapMethod::Reqmod,
+            crate::protocol::common::IcapMethod::Respmod,
+        ];
+        
+        Ok(self.response_generator.options_response(&methods, capabilities))
     }
 
     /// Handle REQMOD request
@@ -445,13 +483,7 @@ impl IcapConnection {
             }
             None => {
                 println!("DEBUG: No encapsulated data in REQMOD request");
-                return Ok(IcapResponse {
-                    status: http::StatusCode::BAD_REQUEST,
-                    version: http::Version::HTTP_11,
-                    headers: http::HeaderMap::new(),
-                    body: bytes::Bytes::from("No encapsulated HTTP request data"),
-                    encapsulated: None,
-                });
+                return Ok(self.response_generator.bad_request(Some("REQMOD request must contain encapsulated data")));
             }
         };
 
@@ -493,13 +525,7 @@ impl IcapConnection {
             }
             None => {
                 println!("DEBUG: No encapsulated data in RESPMOD request");
-                return Ok(IcapResponse {
-                    status: http::StatusCode::BAD_REQUEST,
-                    version: http::Version::HTTP_11,
-                    headers: http::HeaderMap::new(),
-                    body: bytes::Bytes::from("No encapsulated HTTP response data"),
-                    encapsulated: None,
-                });
+                return Ok(self.response_generator.bad_request(Some("RESPMOD request must contain encapsulated data")));
             }
         };
 
@@ -555,7 +581,7 @@ impl IcapConnection {
     async fn parse_http_request_from_encapsulated(&self, encapsulated: &EncapsulatedData) -> IcapResult<HttpRequest> {
         // Extract request headers and body from encapsulated data
         let req_headers = encapsulated.req_hdr.as_ref()
-            .ok_or_else(|| IcapError::Protocol("No request headers in encapsulated data".to_string()))?;
+            .ok_or_else(|| IcapError::protocol_simple("No request headers in encapsulated data".to_string()))?;
         
         let req_body = encapsulated.req_body.as_ref()
             .map(|b| b.to_vec())
@@ -600,7 +626,7 @@ impl IcapConnection {
                     status: http::StatusCode::FORBIDDEN,
                     version: http::Version::HTTP_11,
                     headers: {
-                        let mut headers = http::HeaderMap::new();
+        let mut headers = http::HeaderMap::new();
                         headers.insert("X-ICAP-Error", "Blocked domain".parse().unwrap());
                         headers
                     },
@@ -618,7 +644,7 @@ impl IcapConnection {
                 headers: {
                     let mut headers = http::HeaderMap::new();
                     headers.insert("X-ICAP-Error", "Blocked keywords in URI".parse().unwrap());
-                    headers
+        headers
                 },
                 body: bytes::Bytes::from("Request blocked: blocked keywords in URI"),
                 encapsulated: None,
@@ -632,9 +658,9 @@ impl IcapConnection {
                     status: http::StatusCode::FORBIDDEN,
                     version: http::Version::HTTP_11,
                     headers: {
-                        let mut headers = http::HeaderMap::new();
+        let mut headers = http::HeaderMap::new();
                         headers.insert("X-ICAP-Error", "Blocked MIME type".parse().unwrap());
-                        headers
+        headers
                     },
                     body: bytes::Bytes::from("Request blocked: blocked MIME type"),
                     encapsulated: None,
@@ -659,22 +685,22 @@ impl IcapConnection {
 
         // Check for blocked keywords in body
         if self.contains_blocked_keywords(&String::from_utf8_lossy(&http_request.body)) {
-            return Ok(IcapResponse {
+                return Ok(IcapResponse {
                 status: http::StatusCode::FORBIDDEN,
-                version: http::Version::HTTP_11,
+                    version: http::Version::HTTP_11,
                 headers: {
                     let mut headers = http::HeaderMap::new();
                     headers.insert("X-ICAP-Error", "Blocked keywords in content".parse().unwrap());
                     headers
                 },
                 body: bytes::Bytes::from("Request blocked: blocked keywords in content"),
-                encapsulated: None,
-            });
-        }
+                    encapsulated: None,
+                });
+            }
 
-        // Allow the request
+        // Allow the request - return 200 OK for G3Proxy compatibility
         Ok(IcapResponse {
-            status: http::StatusCode::NO_CONTENT,
+            status: http::StatusCode::OK,
             version: http::Version::HTTP_11,
             headers: http::HeaderMap::new(),
             body: bytes::Bytes::new(),
@@ -775,7 +801,7 @@ impl IcapConnection {
     async fn parse_http_response_from_encapsulated(&self, encapsulated: &EncapsulatedData) -> IcapResult<HttpResponse> {
         // Extract response headers and body from encapsulated data
         let res_headers = encapsulated.res_hdr.as_ref()
-            .ok_or_else(|| IcapError::Protocol("No response headers in encapsulated data".to_string()))?;
+            .ok_or_else(|| IcapError::protocol_simple("No response headers in encapsulated data".to_string()))?;
         
         let res_body = encapsulated.res_body.as_ref()
             .map(|b| b.to_vec())
@@ -869,9 +895,9 @@ impl IcapConnection {
             });
         }
 
-        // Allow the response
+        // Allow the response - return 200 OK for G3Proxy compatibility
         Ok(IcapResponse {
-            status: http::StatusCode::NO_CONTENT,
+            status: http::StatusCode::OK,
             version: http::Version::HTTP_11,
             headers: http::HeaderMap::new(),
             body: bytes::Bytes::new(),

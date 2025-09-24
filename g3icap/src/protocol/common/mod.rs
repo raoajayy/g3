@@ -1,6 +1,7 @@
 //! Common ICAP protocol types and utilities
 
 use crate::error::IcapError;
+use crate::protocol::chunked::ChunkedParser;
 use bytes::Bytes;
 use http::{HeaderMap, StatusCode, Uri, Version};
 use std::collections::HashMap;
@@ -101,155 +102,20 @@ pub struct IcapService {
 pub struct IcapParser;
 
 impl IcapParser {
-    /// Parse ICAP request from bytes
+    /// Parse ICAP request from bytes using nom parser
     pub fn parse_request(data: &[u8]) -> Result<IcapRequest, IcapError> {
-        println!("DEBUG: Parsing ICAP request, {} bytes", data.len());
-        println!("DEBUG: Request data: {}", String::from_utf8_lossy(data));
+        let data_str = std::str::from_utf8(data)
+            .map_err(|e| IcapError::protocol_error(&format!("Invalid UTF-8: {}", e), "PARSER"))?;
         
-        let lines: Vec<&[u8]> = data.split(|&b| b == b'\n').collect();
-        
-        if lines.is_empty() {
-            println!("DEBUG: Empty request");
-            return Err(IcapError::Protocol("Empty request".to_string()));
-        }
-        
-        // Parse request line
-        let request_line = lines[0];
-        
-        let request_parts: Vec<&[u8]> = request_line.split(|&b| b == b' ').collect();
-        if request_parts.len() < 3 {
-            return Err(IcapError::Protocol("Invalid request line format".to_string()));
-        }
-        
-        let method = String::from_utf8_lossy(request_parts[0]).to_string();
-        let uri_str = String::from_utf8_lossy(request_parts[1]).to_string();
-        let version_str = String::from_utf8_lossy(request_parts[2]).trim().to_string();
-        
-        let method = IcapMethod::from(method.as_str());
-        let uri = uri_str.parse::<Uri>()
-            .map_err(|e| IcapError::Protocol(format!("Invalid URI: {}", e)))?;
-        let version = parse_http_version(&version_str)?;
-        
-        // Parse headers
-        let mut headers = HeaderMap::new();
-        let mut _body_start = 0;
-        
-        for (i, line) in lines.iter().enumerate().skip(1) {
-            if line.is_empty() || (line.len() == 1 && line[0] == b'\r') {
-                _body_start = i + 1;
-                break;
-            }
-            
-            if let Some(colon_pos) = line.iter().position(|&b| b == b':') {
-                let header_name = String::from_utf8_lossy(&line[..colon_pos]).trim().to_string();
-                let header_value = String::from_utf8_lossy(&line[colon_pos + 1..]).trim().to_string();
-                
-                if let (Ok(name), Ok(value)) = (header_name.parse::<http::HeaderName>(), header_value.parse::<http::HeaderValue>()) {
-                    headers.insert(name, value);
-                }
-            }
-        }
-        
-        // Parse body
-        let body = if _body_start < lines.len() {
-            let body_lines = &lines[_body_start..];
-            if body_lines.is_empty() {
-                Bytes::new()
-            } else {
-                Bytes::from(body_lines.join(&b'\n'))
-            }
-        } else {
-            Bytes::new()
-        };
-        
-        // Parse encapsulated data if present
-        let encapsulated = if let Some(encapsulated_header) = headers.get("encapsulated") {
-            Some(parse_encapsulated_data(encapsulated_header, &body)?)
-        } else {
-            None
-        };
-        
-        Ok(IcapRequest {
-            method,
-            uri,
-            version,
-            headers,
-            body,
-            encapsulated,
-        })
+        crate::protocol::parser::parse_icap_request(data_str)
     }
 
-    /// Parse ICAP response from bytes
+    /// Parse ICAP response from bytes using nom parser
     pub fn parse_response(data: &[u8]) -> Result<IcapResponse, IcapError> {
-        let lines: Vec<&[u8]> = data.split(|&b| b == b'\n').collect();
+        let data_str = std::str::from_utf8(data)
+            .map_err(|e| IcapError::protocol_error(&format!("Invalid UTF-8: {}", e), "PARSER"))?;
         
-        if lines.is_empty() {
-            return Err(IcapError::Protocol("Empty response".to_string()));
-        }
-        
-        // Parse status line
-        let status_line = lines[0];
-        
-        let status_parts: Vec<&[u8]> = status_line.split(|&b| b == b' ').collect();
-        if status_parts.len() < 3 {
-            return Err(IcapError::Protocol("Invalid status line format".to_string()));
-        }
-        
-        let version_str = String::from_utf8_lossy(status_parts[0]).trim().to_string();
-        let status_code = status_parts[1].iter()
-            .filter(|&&b| b.is_ascii_digit())
-            .fold(0u16, |acc, &b| acc * 10 + (b - b'0') as u16);
-        
-        let version = parse_http_version(&version_str)?;
-        let status = StatusCode::from_u16(status_code)
-            .map_err(|e| IcapError::Protocol(format!("Invalid status code: {}", e)))?;
-        
-        // Parse headers
-        let mut headers = HeaderMap::new();
-        let mut _body_start = 0;
-        
-        for (i, line) in lines.iter().enumerate().skip(1) {
-            if line.is_empty() || (line.len() == 1 && line[0] == b'\r') {
-                _body_start = i + 1;
-                break;
-            }
-            
-            if let Some(colon_pos) = line.iter().position(|&b| b == b':') {
-                let header_name = String::from_utf8_lossy(&line[..colon_pos]).trim().to_string();
-                let header_value = String::from_utf8_lossy(&line[colon_pos + 1..]).trim().to_string();
-                
-                if let (Ok(name), Ok(value)) = (header_name.parse::<http::HeaderName>(), header_value.parse::<http::HeaderValue>()) {
-                    headers.insert(name, value);
-                }
-            }
-        }
-        
-        // Parse body
-        let body = if _body_start < lines.len() {
-            let body_lines = &lines[_body_start..];
-            if body_lines.is_empty() {
-                Bytes::new()
-            } else {
-                Bytes::from(body_lines.join(&b'\n'))
-            }
-        } else {
-            Bytes::new()
-        };
-        
-        // Parse encapsulated data if present
-        let encapsulated = if let Some(encapsulated_header) = headers.get("encapsulated") {
-            Some(parse_encapsulated_data(encapsulated_header, &body)?)
-        } else {
-            None
-        };
-        
-        Ok(IcapResponse {
-            status,
-            version,
-            headers,
-            body,
-            encapsulated,
-        })
+        crate::protocol::parser::parse_icap_response(data_str)
     }
 }
 
@@ -261,14 +127,14 @@ fn parse_http_version(version_str: &str) -> Result<Version, IcapError> {
         "HTTP/2.0" => Ok(Version::HTTP_2),
         "HTTP/3.0" => Ok(Version::HTTP_3),
         "ICAP/1.0" => Ok(Version::HTTP_11), // ICAP/1.0 maps to HTTP/1.1 for compatibility
-        _ => Err(IcapError::Protocol(format!("Unsupported version: {}", version_str))),
+        _ => Err(IcapError::protocol_simple(format!("Unsupported version: {}", version_str))),
     }
 }
 
 /// Parse encapsulated data from ICAP message
 fn parse_encapsulated_data(header: &http::HeaderValue, body: &[u8]) -> Result<EncapsulatedData, IcapError> {
     let header_str = header.to_str()
-        .map_err(|e| IcapError::Protocol(format!("Invalid encapsulated header: {}", e)))?;
+        .map_err(|e| IcapError::protocol_simple(format!("Invalid encapsulated header: {}", e)))?;
     
     // Parse encapsulated header format: "req-hdr=0, res-hdr=100, req-body=200, res-body=300"
     let mut req_hdr_offset = None;
@@ -281,7 +147,7 @@ fn parse_encapsulated_data(header: &http::HeaderValue, body: &[u8]) -> Result<En
         let part = part.trim();
         if let Some((key, value)) = part.split_once('=') {
             let offset = value.parse::<usize>()
-                .map_err(|e| IcapError::Protocol(format!("Invalid offset in encapsulated header: {}", e)))?;
+                .map_err(|e| IcapError::protocol_simple(format!("Invalid offset in encapsulated header: {}", e)))?;
             
             match key.trim() {
                 "req-hdr" => req_hdr_offset = Some(offset),
@@ -335,15 +201,21 @@ fn parse_encapsulated_data(header: &http::HeaderValue, body: &[u8]) -> Result<En
         let safe_end_offset = std::cmp::min(end_offset, body.len());
         
         if offset < safe_end_offset && offset < body.len() {
-            req_body = Some(Bytes::from(body[offset..safe_end_offset].to_vec()));
+            // For ICAP, bodies should be chunked, but handle non-chunked data gracefully
+            let body_data = &body[offset..safe_end_offset];
+            req_body = Some(parse_body_data(body_data)?);
         } else if offset < body.len() {
-            req_body = Some(Bytes::from(body[offset..].to_vec()));
+            // For ICAP, bodies should be chunked, but handle non-chunked data gracefully
+            let body_data = &body[offset..];
+            req_body = Some(parse_body_data(body_data)?);
         }
     }
     
     if let Some(offset) = res_body_offset {
         if offset < body.len() {
-            res_body = Some(Bytes::from(body[offset..].to_vec()));
+            // For ICAP, bodies should be chunked, but handle non-chunked data gracefully
+            let body_data = &body[offset..];
+            res_body = Some(parse_body_data(body_data)?);
         }
     }
     
@@ -364,22 +236,34 @@ fn parse_http_headers(data: &[u8]) -> Result<HeaderMap, IcapError> {
         return Ok(headers);
     }
     
-    let lines: Vec<&[u8]> = data.split(|&b| b == b'\n').collect();
+    let data_str = std::str::from_utf8(data)
+        .map_err(|e| IcapError::protocol_error(&format!("Invalid UTF-8 in headers: {}", e), "PARSER"))?;
+    
+    let lines: Vec<&str> = data_str.split('\n').collect();
+    let mut is_first_line = true;
     
     for line in lines {
-        if line.is_empty() || (line.len() == 1 && line[0] == b'\r') {
+        let line = line.trim();
+        
+        // Skip empty lines
+        if line.is_empty() {
             break;
         }
         
-        // Skip the HTTP request line (first line)
-        if line.starts_with(b"GET ") || line.starts_with(b"POST ") || line.starts_with(b"HEAD ") || 
-           line.starts_with(b"PUT ") || line.starts_with(b"DELETE ") || line.starts_with(b"OPTIONS ") {
-            continue;
+        // Skip the HTTP request line (first line) - it starts with HTTP method
+        if is_first_line {
+            if line.starts_with("GET ") || line.starts_with("POST ") || line.starts_with("HEAD ") || 
+               line.starts_with("PUT ") || line.starts_with("DELETE ") || line.starts_with("OPTIONS ") ||
+               line.starts_with("PATCH ") || line.starts_with("CONNECT ") || line.starts_with("TRACE ") {
+                is_first_line = false;
+                continue;
+            }
         }
         
-        if let Some(colon_pos) = line.iter().position(|&b| b == b':') {
-            let header_name = String::from_utf8_lossy(&line[..colon_pos]).trim().to_string();
-            let header_value = String::from_utf8_lossy(&line[colon_pos + 1..]).trim().to_string();
+        // Parse header line
+        if let Some(colon_pos) = line.find(':') {
+            let header_name = line[..colon_pos].trim();
+            let header_value = line[colon_pos + 1..].trim();
             
             if !header_name.is_empty() && !header_value.is_empty() {
                 if let (Ok(name), Ok(value)) = (header_name.parse::<http::HeaderName>(), header_value.parse::<http::HeaderValue>()) {
@@ -435,34 +319,51 @@ impl IcapSerializer {
         let mut output = Vec::new();
         
         // Serialize status line - ICAP responses must use ICAP/1.0 protocol version
-        let reason = response.status.canonical_reason().unwrap_or("Unknown");
-        output.extend_from_slice(format!("ICAP/1.0 {} {}\r\n", 
+        let reason = match response.status.as_u16() {
+            204 => "No Modifications", // ICAP 204 is "No Modifications", not "No Content"
+            _ => response.status.canonical_reason().unwrap_or("Unknown"),
+        };
+        let status_line = format!("ICAP/1.0 {} {}\r\n", 
             response.status.as_u16(), 
             reason
-        ).as_bytes());
+        );
+        println!("DEBUG: Serializing ICAP response: {}", status_line.trim());
+        output.extend_from_slice(status_line.as_bytes());
         
         // Serialize headers
         for (name, value) in &response.headers {
-            output.extend_from_slice(format!("{}: {}\r\n", name, value.to_str().unwrap_or("")).as_bytes());
+            let header_line = format!("{}: {}\r\n", name, value.to_str().unwrap_or(""));
+            println!("DEBUG: Response header: {}", header_line.trim());
+            output.extend_from_slice(header_line.as_bytes());
         }
         
         // Serialize encapsulated header if present and not already in headers
         if let Some(encapsulated) = &response.encapsulated {
             if !response.headers.contains_key("encapsulated") {
                 let encapsulated_header = serialize_encapsulated_header(encapsulated)?;
-                output.extend_from_slice(format!("Encapsulated: {}\r\n", encapsulated_header).as_bytes());
+                let encapsulated_line = format!("Encapsulated: {}\r\n", encapsulated_header);
+                println!("DEBUG: Response encapsulated: {}", encapsulated_line.trim());
+                output.extend_from_slice(encapsulated_line.as_bytes());
             }
         }
         
         // Empty line to separate headers from body
         output.extend_from_slice(b"\r\n");
+        println!("DEBUG: Response headers complete, body length: {}", response.body.len());
         
-        // Serialize body
-        if !response.body.is_empty() {
+        // Serialize body - RFC 3507: 204 No Modifications responses must not have a body
+        if response.status.as_u16() == 204 {
+            println!("DEBUG: 204 No Modifications response - skipping body as per RFC 3507");
+        } else if !response.body.is_empty() {
+            println!("DEBUG: Adding response body: {} bytes", response.body.len());
             output.extend_from_slice(&response.body);
         }
         
-        Ok(Bytes::from(output))
+        let result = Bytes::from(output);
+        println!("DEBUG: Complete ICAP response serialized: {} bytes", result.len());
+        println!("DEBUG: Response content: {}", String::from_utf8_lossy(&result));
+        
+        Ok(result)
     }
 }
 
@@ -477,32 +378,34 @@ fn format_http_version(version: Version) -> &'static str {
     }
 }
 
-/// Serialize encapsulated header
+/// Serialize encapsulated header with proper byte offset calculation
 fn serialize_encapsulated_header(encapsulated: &EncapsulatedData) -> Result<String, IcapError> {
     let mut parts = Vec::new();
     let mut offset = 0;
     
-    // Calculate offsets for each section
-    if encapsulated.req_hdr.is_some() {
+    // Calculate actual offsets for each section based on real data sizes
+    if let Some(req_hdr) = &encapsulated.req_hdr {
         parts.push(format!("req-hdr={}", offset));
-        // Estimate header size (this is simplified)
-        offset += 200; // Rough estimate
+        // Calculate actual header size by serializing it
+        let header_size = serialize_http_headers(req_hdr)?.len();
+        offset += header_size;
     }
     
-    if encapsulated.res_hdr.is_some() {
+    if let Some(res_hdr) = &encapsulated.res_hdr {
         parts.push(format!("res-hdr={}", offset));
-        offset += 200; // Rough estimate
+        // Calculate actual header size by serializing it
+        let header_size = serialize_http_headers(res_hdr)?.len();
+        offset += header_size;
     }
     
-    if encapsulated.req_body.is_some() {
+    if let Some(req_body) = &encapsulated.req_body {
         parts.push(format!("req-body={}", offset));
-        if let Some(body) = &encapsulated.req_body {
-            offset += body.len();
-        }
+        offset += req_body.len();
     }
     
-    if encapsulated.res_body.is_some() {
+    if let Some(res_body) = &encapsulated.res_body {
         parts.push(format!("res-body={}", offset));
+        offset += res_body.len();
     }
     
     if encapsulated.null_body {
@@ -510,4 +413,69 @@ fn serialize_encapsulated_header(encapsulated: &EncapsulatedData) -> Result<Stri
     }
     
     Ok(parts.join(", "))
+}
+
+/// Serialize HTTP headers to bytes for size calculation
+fn serialize_http_headers(headers: &HeaderMap) -> Result<Vec<u8>, IcapError> {
+    let mut output = Vec::new();
+    
+    for (name, value) in headers {
+        output.extend_from_slice(name.as_str().as_bytes());
+        output.extend_from_slice(b": ");
+        output.extend_from_slice(value.as_bytes());
+        output.extend_from_slice(b"\r\n");
+    }
+    
+    // Add final CRLF
+    output.extend_from_slice(b"\r\n");
+    
+    Ok(output)
+}
+
+/// Parse body data, handling both chunked and non-chunked data
+fn parse_body_data(data: &[u8]) -> Result<Bytes, IcapError> {
+    if data.is_empty() {
+        return Ok(Bytes::new());
+    }
+    
+    // Check if data looks like chunked encoding (starts with hex digits)
+    if is_chunked_data(data) {
+        parse_chunked_body(data)
+    } else {
+        // Treat as raw data
+        Ok(Bytes::from(data.to_vec()))
+    }
+}
+
+/// Check if data appears to be chunked transfer encoded
+fn is_chunked_data(data: &[u8]) -> bool {
+    if data.is_empty() {
+        return false;
+    }
+    
+    // Look for the first line to see if it's a hex number followed by CRLF
+    if let Some(crlf_pos) = data.windows(2).position(|w| w == b"\r\n") {
+        if crlf_pos > 0 && crlf_pos < 20 { // Reasonable chunk size line length
+            let first_line = &data[..crlf_pos];
+            if let Ok(line_str) = std::str::from_utf8(first_line) {
+                // Check if it's a valid hex number
+                return line_str.chars().all(|c| c.is_ascii_hexdigit());
+            }
+        }
+    }
+    
+    false
+}
+
+/// Parse chunked transfer encoded body
+fn parse_chunked_body(data: &[u8]) -> Result<Bytes, IcapError> {
+    let mut parser = ChunkedParser::new();
+    let (decoded_data, _consumed) = parser.parse_chunk(data)
+        .map_err(|e| IcapError::protocol_error(&e.to_string(), "CHUNKED"))?;
+    
+    if !parser.is_complete() {
+        return Err(IcapError::protocol_error("Incomplete chunked data", "CHUNKED"));
+    }
+    
+    Ok(Bytes::from(decoded_data))
 }

@@ -1,0 +1,36 @@
+{
+  "name": "g3icap-js-client",
+  "version": "1.0.0",
+  "description": "G3ICAP JavaScript/Node.js Client",
+  "main": "icap_client.js",
+  "scripts": {
+    "test": "jest",
+    "start": "node icap_client.js",
+    "lint": "eslint *.js",
+    "format": "prettier --write *.js"
+  },
+  "keywords": [
+    "icap",
+    "client",
+    "content-filtering",
+    "antivirus",
+    "g3icap"
+  ],
+  "author": "G3ICAP Team",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "winston": "^3.11.0",
+    "prom-client": "^15.0.0",
+    "yargs": "^17.7.2",
+    "yaml": "^2.3.4"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "eslint": "^8.55.0",
+    "prettier": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

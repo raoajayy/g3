@@ -1877,6 +1877,7 @@ dependencies = [
  "memchr",
  "mime",
  "mlua",
+ "nom",
  "openssl-probe",
  "percent-encoding",
  "pin-project-lite",

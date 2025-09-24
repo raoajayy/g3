@@ -27,7 +27,7 @@ impl IcapListener {
     ) -> IcapResult<Self> {
         let addr = format!("{}:{}", host, port)
             .parse::<SocketAddr>()
-            .map_err(|e| IcapError::Network(format!("Invalid address: {}", e)))?;
+            .map_err(|e| IcapError::network_simple(format!("Invalid address: {}", e)))?;
 
         Ok(Self {
             addr,
@@ -39,7 +39,7 @@ impl IcapListener {
     pub async fn start(&self) -> IcapResult<()> {
         let listener = TcpListener::bind(self.addr)
             .await
-            .map_err(|e| IcapError::Network(format!("Failed to bind to {}: {}", self.addr, e)))?;
+            .map_err(|e| IcapError::network_simple(format!("Failed to bind to {}: {}", self.addr, e)))?;
 
         let logger = get_logger("main").unwrap_or_else(|| {
             slog::Logger::root(slog::Discard, slog::o!())
