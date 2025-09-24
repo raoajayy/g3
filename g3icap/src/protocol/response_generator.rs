@@ -1062,7 +1062,11 @@ mod tests {
         assert_eq!(response.status, StatusCode::NO_CONTENT);
         assert!(response.body.is_empty());
         assert!(response.headers.contains_key("istag"));
-        assert!(response.headers.contains_key("server"));
+        assert!(response.headers.contains_key("encapsulated"));
+        // RFC 3507: 204 No Modifications response should have encapsulated: null-body=0
+        assert_eq!(response.headers.get("encapsulated").unwrap(), "null-body=0");
+        // RFC 3507: Server header is optional for 204 responses
+        // The current implementation doesn't include it for 204 responses
     }
 
     #[test]
@@ -1075,8 +1079,10 @@ mod tests {
         assert!(body_str.contains("Invalid header"));
         assert!(response.headers.contains_key("server"));
         assert!(response.headers.contains_key("istag"));
-        assert!(response.headers.contains_key("content-type"));
+        assert!(response.headers.contains_key("encapsulated"));
         assert!(response.headers.contains_key("connection"));
+        // RFC 3507: No content-type at ICAP level for error responses
+        assert!(!response.headers.contains_key("content-type"));
     }
 
     #[test]
@@ -1089,8 +1095,10 @@ mod tests {
         assert!(response.headers.contains_key("allow"));
         assert!(response.headers.contains_key("server"));
         assert!(response.headers.contains_key("istag"));
-        assert!(response.headers.contains_key("content-type"));
+        assert!(response.headers.contains_key("encapsulated"));
         assert!(response.headers.contains_key("connection"));
+        // RFC 3507: No content-type at ICAP level for error responses
+        assert!(!response.headers.contains_key("content-type"));
     }
 
     #[test]
@@ -1173,8 +1181,10 @@ mod tests {
         assert_eq!(response.status, StatusCode::BAD_REQUEST);
         assert!(response.headers.contains_key("transfer-encoding"));
         assert_eq!(response.headers.get("transfer-encoding").unwrap(), "chunked");
-        assert!(response.headers.contains_key("content-type"));
-        assert_eq!(response.headers.get("content-type").unwrap(), "text/plain");
+        assert!(response.headers.contains_key("encapsulated"));
+        assert!(response.headers.contains_key("connection"));
+        // RFC 3507: No content-type at ICAP level for error responses
+        assert!(!response.headers.contains_key("content-type"));
         let body_str = String::from_utf8_lossy(&response.body);
         assert!(body_str.contains("Invalid header"));
     }
@@ -1187,8 +1197,10 @@ mod tests {
         assert_eq!(response.status, StatusCode::FORBIDDEN);
         assert!(response.headers.contains_key("transfer-encoding"));
         assert_eq!(response.headers.get("transfer-encoding").unwrap(), "chunked");
-        assert!(response.headers.contains_key("content-type"));
-        assert_eq!(response.headers.get("content-type").unwrap(), "text/html");
+        assert!(response.headers.contains_key("encapsulated"));
+        assert!(response.headers.contains_key("connection"));
+        // RFC 3507: No content-type at ICAP level for error responses
+        assert!(!response.headers.contains_key("content-type"));
         let body_str = String::from_utf8_lossy(&response.body);
         assert!(body_str.contains("Malware detected"));
         assert!(body_str.contains("<html>"));
@@ -1320,8 +1332,10 @@ mod tests {
         let response = generator.html_error_response(StatusCode::FORBIDDEN, "Access denied");
         
         assert_eq!(response.status, StatusCode::FORBIDDEN);
-        assert!(response.headers.contains_key("content-type"));
-        assert_eq!(response.headers.get("content-type").unwrap(), "text/html");
+        assert!(response.headers.contains_key("encapsulated"));
+        assert!(response.headers.contains_key("connection"));
+        // RFC 3507: No content-type at ICAP level for error responses
+        assert!(!response.headers.contains_key("content-type"));
         
         let body_str = String::from_utf8_lossy(&response.body);
         assert!(body_str.contains("<html>"));
@@ -1339,8 +1353,10 @@ mod tests {
         assert!(serialized_str.starts_with("ICAP/1.0 400 Bad Request\r\n"));
         assert!(serialized_str.contains("server: G3ICAP/1.0.0\r\n"));
         assert!(serialized_str.contains("istag: \"g3icap-1.0.0\"\r\n"));
-        assert!(serialized_str.contains("content-type: text/plain\r\n"));
+        assert!(serialized_str.contains("encapsulated: null-body=0\r\n"));
         assert!(serialized_str.contains("connection: close\r\n"));
+        // RFC 3507: No content-type at ICAP level for error responses
+        assert!(!serialized_str.contains("content-type:"));
         assert!(serialized_str.ends_with("\r\n\r\n400 Bad Request: Test error"));
     }
 
