@@ -11,6 +11,38 @@ use http::{HeaderMap, StatusCode, Version};
 
 use crate::protocol::common::{EncapsulatedData, IcapMethod, IcapResponse};
 
+/// ICAP protocol version
+/// RFC 3507: ICAP uses version 1.0
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IcapVersion {
+    /// ICAP version 1.0
+    V1_0,
+}
+
+impl IcapVersion {
+    /// Get the string representation of the ICAP version
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            IcapVersion::V1_0 => "ICAP/1.0",
+        }
+    }
+    
+    /// Get the default ICAP version
+    pub fn default() -> Self {
+        IcapVersion::V1_0
+    }
+}
+
+impl fmt::Display for IcapVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// ICAP protocol version constant
+/// RFC 3507: ICAP uses version 1.0
+const ICAP_VERSION: IcapVersion = IcapVersion::V1_0;
+
 /// ICAP Response Generator - Handles all ICAP response codes per RFC 3507
 /// 
 /// This implementation follows g3proxy standards for ICAP response handling,
@@ -45,18 +77,35 @@ impl IcapResponseGenerator {
         self.service_id = service_id;
     }
 
+    /// Create an ICAP response with the correct protocol version
+    /// RFC 3507: ICAP responses must use ICAP/1.0 protocol version
+    fn create_icap_response(
+        &self,
+        status: StatusCode,
+        headers: HeaderMap,
+        body: Bytes,
+        encapsulated: Option<EncapsulatedData>,
+    ) -> IcapResponse {
+        IcapResponse {
+            status,
+            version: Version::HTTP_11, // ICAP/1.0 maps to HTTP/1.1 for compatibility
+            headers,
+            body,
+            encapsulated,
+        }
+    }
+
     /// Generate a 100 Continue response
     pub fn continue_response(&self) -> IcapResponse {
         let mut headers = self.build_standard_headers();
         self.add_null_body_header(&mut headers);
         
-        IcapResponse {
-            status: StatusCode::CONTINUE,
-            version: Version::HTTP_11,
+        self.create_icap_response(
+            StatusCode::CONTINUE,
             headers,
-            body: Bytes::new(),
-            encapsulated: None,
-        }
+            Bytes::new(),
+            None,
+        )
     }
 
     /// Generate a 200 OK response with modified content
@@ -68,13 +117,12 @@ impl IcapResponseGenerator {
             headers.insert("encapsulated", encapsulated_header.parse().unwrap());
         }
 
-        IcapResponse {
-            status: StatusCode::OK,
-            version: Version::HTTP_11,
+        self.create_icap_response(
+            StatusCode::OK,
             headers,
             body,
             encapsulated,
-        }
+        )
     }
 
     /// Generate a 200 OK response with chunked transfer encoding
@@ -90,13 +138,12 @@ impl IcapResponseGenerator {
         // Add chunked transfer encoding for the HTTP response body
         headers.insert("transfer-encoding", "chunked".parse().unwrap());
 
-        IcapResponse {
-            status: StatusCode::OK,
-            version: Version::HTTP_11,
+        self.create_icap_response(
+            StatusCode::OK,
             headers,
             body,
             encapsulated,
-        }
+        )
     }
 
     /// Generate a 204 No Modifications response (RFC 3507 compliant)
@@ -114,13 +161,12 @@ impl IcapResponseGenerator {
             headers.insert("encapsulated", "null-body=0".parse().unwrap());
         }
 
-        IcapResponse {
-            status: StatusCode::NO_CONTENT, // This maps to ICAP 204 No Modifications
-            version: Version::HTTP_11,
+        self.create_icap_response(
+            StatusCode::NO_CONTENT, // This maps to ICAP 204 No Modifications
             headers,
-            body: Bytes::new(),
+            Bytes::new(),
             encapsulated,
-        }
+        )
     }
 
     /// Generate a 302 Found response
@@ -1067,13 +1113,14 @@ impl IcapResponseGenerator {
     }
 
     /// Serialize response to bytes following g3proxy's serialization pattern
+    /// RFC 3507: ICAP responses must use ICAP/1.0 in the status line
     pub fn serialize_response(&self, response: &IcapResponse) -> Vec<u8> {
         const RESPONSE_BUFFER_SIZE: usize = 1024;
         let mut buf = Vec::<u8>::with_capacity(RESPONSE_BUFFER_SIZE);
         
-        // Write status line
+        // Write status line - RFC 3507: ICAP responses use ICAP/1.0 format
         let reason = Self::get_reason_phrase(response.status);
-        buf.extend_from_slice(format!("ICAP/1.0 {} {}\r\n", response.status.as_str(), reason).as_bytes());
+        buf.extend_from_slice(format!("{} {} {}\r\n", ICAP_VERSION.as_str(), response.status.as_str(), reason).as_bytes());
         
         // Write headers
         for (name, value) in &response.headers {
@@ -1466,6 +1513,7 @@ mod tests {
         let serialized = generator.serialize_response(&response);
         
         let serialized_str = String::from_utf8_lossy(&serialized);
+        // RFC 3507: ICAP responses must use ICAP/1.0 protocol version
         assert!(serialized_str.starts_with("ICAP/1.0 400 Bad Request\r\n"));
         assert!(serialized_str.contains("server: G3ICAP/1.0.0\r\n"));
         assert!(serialized_str.contains("istag: \"g3icap-1.0.0\"\r\n"));
@@ -1519,6 +1567,34 @@ mod tests {
         assert!(html.contains("<h1>403 Forbidden</h1>"));
         assert!(html.contains("<p>Access denied</p>"));
         assert!(html.contains("</html>"));
+    }
+
+    #[test]
+    fn test_icap_protocol_version() {
+        let generator = IcapResponseGenerator::default();
+        
+        // Test ICAP version constant
+        assert_eq!(ICAP_VERSION.as_str(), "ICAP/1.0");
+        assert_eq!(ICAP_VERSION.to_string(), "ICAP/1.0");
+        
+        // Test that responses use correct protocol version in serialization
+        let response = generator.continue_response();
+        let serialized = generator.serialize_response(&response);
+        let serialized_str = String::from_utf8_lossy(&serialized);
+        
+        // Verify the status line uses ICAP/1.0 format
+        assert!(serialized_str.starts_with("ICAP/1.0 100 Continue\r\n"));
+        
+        // Test with different response types
+        let response2 = generator.ok_modified(None, Bytes::from("test"));
+        let serialized2 = generator.serialize_response(&response2);
+        let serialized_str2 = String::from_utf8_lossy(&serialized2);
+        assert!(serialized_str2.starts_with("ICAP/1.0 200 OK\r\n"));
+        
+        let response3 = generator.no_modifications(None);
+        let serialized3 = generator.serialize_response(&response3);
+        let serialized_str3 = String::from_utf8_lossy(&serialized3);
+        assert!(serialized_str3.starts_with("ICAP/1.0 204 No Content\r\n"));
     }
 
     #[test]
