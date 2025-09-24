@@ -11,6 +11,20 @@ use http::{HeaderMap, StatusCode, Version};
 
 use crate::protocol::common::{EncapsulatedData, IcapMethod, IcapResponse};
 
+/// Preview analysis result for ICAP preview requests
+/// RFC 3507: Preview allows servers to examine content before processing
+#[derive(Debug, Clone)]
+pub enum PreviewAnalysisResult {
+    /// Content is allowed, no modifications needed
+    Allow,
+    /// Content is blocked with reason
+    Block(String),
+    /// Need more preview data to make decision
+    NeedMoreData(usize),
+    /// Content needs modification
+    Modify(Option<EncapsulatedData>, Bytes),
+}
+
 /// ICAP protocol version
 /// RFC 3507: ICAP uses version 1.0
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,10 +109,28 @@ impl IcapResponseGenerator {
         }
     }
 
-    /// Generate a 100 Continue response
+    /// Generate a 100 Continue response for preview requests
+    /// RFC 3507: Used to acknowledge preview requests and indicate more data is needed
     pub fn continue_response(&self) -> IcapResponse {
         let mut headers = self.build_standard_headers();
         self.add_null_body_header(&mut headers);
+        
+        self.create_icap_response(
+            StatusCode::CONTINUE,
+            headers,
+            Bytes::new(),
+            None,
+        )
+    }
+
+    /// Generate a 100 Continue response with preview size
+    /// RFC 3507: Indicates how much preview data the server needs
+    pub fn continue_response_with_preview(&self, preview_size: usize) -> IcapResponse {
+        let mut headers = self.build_standard_headers();
+        self.add_null_body_header(&mut headers);
+        
+        // Add preview header indicating required preview size
+        headers.insert("preview", preview_size.to_string().parse().unwrap());
         
         self.create_icap_response(
             StatusCode::CONTINUE,
@@ -166,6 +198,28 @@ impl IcapResponseGenerator {
             headers,
             Bytes::new(),
             encapsulated,
+        )
+    }
+
+    /// Generate a 204 No Modifications response for preview requests
+    /// RFC 3507: Indicates that no modifications are needed based on preview data
+    pub fn no_modifications_preview(&self, preview_data: &[u8]) -> IcapResponse {
+        let mut headers = HeaderMap::new();
+        
+        // RFC 3507: ISTag is MANDATORY for 204 responses
+        headers.insert("istag", format!("\"{}\"", self.server_version).parse().unwrap());
+        
+        // RFC 3507: Encapsulated header is MANDATORY for 204 responses
+        headers.insert("encapsulated", "null-body=0".parse().unwrap());
+        
+        // Add preview information
+        headers.insert("preview", preview_data.len().to_string().parse().unwrap());
+
+        self.create_icap_response(
+            StatusCode::NO_CONTENT,
+            headers,
+            Bytes::new(),
+            None,
         )
     }
 
@@ -269,6 +323,37 @@ impl IcapResponseGenerator {
             self.format_error_message(StatusCode::FORBIDDEN, &format!("Forbidden: {}", reason))
         } else {
             self.format_error_message(StatusCode::FORBIDDEN, "Access denied")
+        };
+
+        IcapResponse {
+            status: StatusCode::FORBIDDEN,
+            version: Version::HTTP_11,
+            headers,
+            body: Bytes::from(body),
+            encapsulated: None,
+        }
+    }
+
+    /// Generate a 403 Forbidden response for preview requests
+    /// RFC 3507: Blocks content based on preview data analysis
+    pub fn forbidden_preview(&self, reason: Option<&str>, preview_data: &[u8]) -> IcapResponse {
+        let mut headers = self.build_standard_headers();
+        
+        // RFC 3507: Add required Encapsulated header for error responses
+        self.add_null_body_header(&mut headers);
+        
+        // Add connection close for error responses
+        headers.insert("connection", "close".parse().unwrap());
+        
+        // Add preview information
+        headers.insert("preview", preview_data.len().to_string().parse().unwrap());
+
+        // For ICAP error responses, we don't include content-type at ICAP level
+        // The error message goes in the body without HTTP encapsulation
+        let body = if let Some(reason) = reason {
+            self.format_error_message(StatusCode::FORBIDDEN, &format!("Forbidden: {} (based on preview)", reason))
+        } else {
+            self.format_error_message(StatusCode::FORBIDDEN, "Access denied (based on preview)")
         };
 
         IcapResponse {
@@ -1175,6 +1260,192 @@ impl IcapResponseGenerator {
             headers.insert(header_name, header_value);
         }
     }
+
+    /// Preview handling utilities and methods
+    /// RFC 3507: Preview is a mechanism for ICAP servers to examine content before processing
+
+    /// Check if preview data is sufficient for decision making
+    /// Returns true if enough preview data is available, false if more is needed
+    pub fn is_preview_sufficient(&self, preview_data: &[u8], required_size: usize) -> bool {
+        preview_data.len() >= required_size
+    }
+
+    /// Calculate optimal preview size based on content type and size
+    /// RFC 3507: Preview size should be reasonable to avoid performance issues
+    pub fn calculate_preview_size(&self, content_type: Option<&str>, content_size: Option<usize>) -> usize {
+        const DEFAULT_PREVIEW_SIZE: usize = 1024; // 1KB default
+        const MAX_PREVIEW_SIZE: usize = 8192; // 8KB maximum
+        
+        // For text content, use content size if available, otherwise default
+        if let Some(ct) = content_type {
+            if ct.starts_with("text/") || ct.contains("html") || ct.contains("xml") {
+                return content_size.unwrap_or(DEFAULT_PREVIEW_SIZE);
+            }
+        }
+        
+        // If no content type specified but we have content size, use content size
+        if content_type.is_none() && content_size.is_some() {
+            return content_size.unwrap();
+        }
+        
+        // For binary content, use larger preview sizes
+        if let Some(size) = content_size {
+            // Use 10% of content size, but cap at MAX_PREVIEW_SIZE
+            let calculated_size = std::cmp::max(DEFAULT_PREVIEW_SIZE, size / 10);
+            return std::cmp::min(calculated_size, MAX_PREVIEW_SIZE);
+        }
+        
+        DEFAULT_PREVIEW_SIZE
+    }
+
+    /// Generate preview response based on analysis
+    /// Returns appropriate ICAP response based on preview data analysis
+    pub fn handle_preview_request(
+        &self,
+        preview_data: &[u8],
+        _content_type: Option<&str>,
+        analysis_result: PreviewAnalysisResult,
+    ) -> IcapResponse {
+        match analysis_result {
+            PreviewAnalysisResult::Allow => {
+                self.no_modifications_preview(preview_data)
+            }
+            PreviewAnalysisResult::Block(reason) => {
+                self.forbidden_preview(Some(&reason), preview_data)
+            }
+            PreviewAnalysisResult::NeedMoreData(required_size) => {
+                self.continue_response_with_preview(required_size)
+            }
+            PreviewAnalysisResult::Modify(encapsulated, body) => {
+                // For preview-based modifications, we need to create a 200 OK response
+                let mut headers = self.build_standard_headers();
+                
+                if let Some(enc) = &encapsulated {
+                    let encapsulated_header = self.serialize_encapsulated_header(enc);
+                    headers.insert("encapsulated", encapsulated_header.parse().unwrap());
+                }
+                
+                // Add preview information
+                headers.insert("preview", preview_data.len().to_string().parse().unwrap());
+
+                self.create_icap_response(
+                    StatusCode::OK,
+                    headers,
+                    body,
+                    encapsulated,
+                )
+            }
+        }
+    }
+
+    /// Generate preview response for content filtering
+    /// Analyzes preview data for malware, inappropriate content, etc.
+    pub fn handle_content_filter_preview(
+        &self,
+        preview_data: &[u8],
+        content_type: Option<&str>,
+        url: Option<&str>,
+    ) -> IcapResponse {
+        // Simulate content analysis based on preview data
+        let analysis_result = self.analyze_preview_content(preview_data, content_type, url);
+        self.handle_preview_request(preview_data, content_type, analysis_result)
+    }
+
+    /// Analyze preview content for filtering decisions
+    /// This is a simplified implementation - in practice, this would integrate with
+    /// actual content filtering engines (antivirus, malware detection, etc.)
+    fn analyze_preview_content(
+        &self,
+        preview_data: &[u8],
+        content_type: Option<&str>,
+        url: Option<&str>,
+    ) -> PreviewAnalysisResult {
+        // Check for malware signatures in preview data
+        if self.contains_malware_signatures(preview_data) {
+            return PreviewAnalysisResult::Block("Malware detected in preview".to_string());
+        }
+        
+        // Check for inappropriate content
+        if self.contains_inappropriate_content(preview_data, content_type) {
+            return PreviewAnalysisResult::Block("Inappropriate content detected".to_string());
+        }
+        
+        // Check URL-based filtering
+        if let Some(url) = url {
+            if self.is_blocked_url(url) {
+                return PreviewAnalysisResult::Block("URL is blocked".to_string());
+            }
+        }
+        
+        // Check if we need more data for analysis
+        let required_size = self.calculate_preview_size(content_type, Some(preview_data.len()));
+        if preview_data.len() < required_size {
+            return PreviewAnalysisResult::NeedMoreData(required_size);
+        }
+        
+        // Content appears clean
+        PreviewAnalysisResult::Allow
+    }
+
+    /// Check for malware signatures in preview data
+    /// This is a simplified implementation - in practice, this would use actual antivirus engines
+    fn contains_malware_signatures(&self, data: &[u8]) -> bool {
+        // Simple signature detection - in practice, this would use YARA rules or similar
+        let malware_signatures: &[&[u8]] = &[
+            b"malware",
+            b"virus",
+            b"trojan",
+            b"backdoor",
+            b"rootkit",
+        ];
+        
+        for signature in malware_signatures {
+            if data.windows(signature.len()).any(|window| window == *signature) {
+                return true;
+            }
+        }
+        
+        false
+    }
+
+    /// Check for inappropriate content in preview data
+    /// This is a simplified implementation - in practice, this would use content classification
+    fn contains_inappropriate_content(&self, data: &[u8], content_type: Option<&str>) -> bool {
+        // Check for inappropriate keywords
+        let inappropriate_keywords: &[&[u8]] = &[
+            b"adult",
+            b"explicit",
+            b"violence",
+            b"hate",
+        ];
+        
+        for keyword in inappropriate_keywords {
+            if data.windows(keyword.len()).any(|window| window == *keyword) {
+                return true;
+            }
+        }
+        
+        // Check content type
+        if let Some(ct) = content_type {
+            if ct.contains("adult") || ct.contains("explicit") {
+                return true;
+            }
+        }
+        
+        false
+    }
+
+    /// Check if URL is blocked
+    /// This is a simplified implementation - in practice, this would use URL filtering databases
+    fn is_blocked_url(&self, url: &str) -> bool {
+        let blocked_domains = [
+            "malware.com",
+            "phishing.net",
+            "spam.org",
+        ];
+        
+        blocked_domains.iter().any(|domain| url.contains(domain))
+    }
 }
 
 impl Default for IcapResponseGenerator {
@@ -1812,5 +2083,242 @@ mod tests {
         assert!(header_str.contains("req-hdr="));
         assert!(header_str.contains("req-body="));
         assert!(header_str.contains("res-body="));
+    }
+
+    // Preview handling tests
+
+    #[test]
+    fn test_continue_response_with_preview() {
+        let generator = IcapResponseGenerator::default();
+        let response = generator.continue_response_with_preview(2048);
+        
+        assert_eq!(response.status, StatusCode::CONTINUE);
+        assert!(response.headers.contains_key("preview"));
+        assert_eq!(response.headers.get("preview").unwrap(), "2048");
+        assert!(response.headers.contains_key("encapsulated"));
+        assert_eq!(response.headers.get("encapsulated").unwrap(), "null-body=0");
+    }
+
+    #[test]
+    fn test_no_modifications_preview() {
+        let generator = IcapResponseGenerator::default();
+        let preview_data = b"clean content preview";
+        let response = generator.no_modifications_preview(preview_data);
+        
+        assert_eq!(response.status, StatusCode::NO_CONTENT);
+        assert!(response.headers.contains_key("preview"));
+        assert_eq!(response.headers.get("preview").unwrap(), "21"); // length of preview_data
+        assert!(response.headers.contains_key("encapsulated"));
+        assert_eq!(response.headers.get("encapsulated").unwrap(), "null-body=0");
+    }
+
+    #[test]
+    fn test_forbidden_preview() {
+        let generator = IcapResponseGenerator::default();
+        let preview_data = b"malware content preview";
+        let response = generator.forbidden_preview(Some("Malware detected"), preview_data);
+        
+        assert_eq!(response.status, StatusCode::FORBIDDEN);
+        assert!(response.headers.contains_key("preview"));
+        assert_eq!(response.headers.get("preview").unwrap(), "23"); // length of preview_data
+        assert!(response.headers.contains_key("encapsulated"));
+        assert_eq!(response.headers.get("encapsulated").unwrap(), "null-body=0");
+        
+        let body_str = String::from_utf8_lossy(&response.body);
+        assert!(body_str.contains("Malware detected"));
+        assert!(body_str.contains("based on preview"));
+    }
+
+    #[test]
+    fn test_is_preview_sufficient() {
+        let generator = IcapResponseGenerator::default();
+        let preview_data = b"some preview data";
+        
+        // Should be sufficient
+        assert!(generator.is_preview_sufficient(preview_data, 10));
+        assert!(generator.is_preview_sufficient(preview_data, 17));
+        
+        // Should not be sufficient
+        assert!(!generator.is_preview_sufficient(preview_data, 20));
+        assert!(!generator.is_preview_sufficient(preview_data, 100));
+    }
+
+    #[test]
+    fn test_calculate_preview_size() {
+        let generator = IcapResponseGenerator::default();
+        
+        // Test with text content
+        let text_size = generator.calculate_preview_size(Some("text/html"), Some(5000));
+        assert_eq!(text_size, 5000); // Should use content size for text
+        
+        // Test with binary content
+        let binary_size = generator.calculate_preview_size(Some("application/octet-stream"), Some(50000));
+        assert_eq!(binary_size, 5000); // Should be 10% of content size
+        
+        // Test with unknown content type
+        let unknown_size = generator.calculate_preview_size(None, Some(1000));
+        assert_eq!(unknown_size, 1000); // Should use content size
+        
+        // Test with no content size
+        let default_size = generator.calculate_preview_size(Some("text/plain"), None);
+        assert_eq!(default_size, 1024); // Should use default
+    }
+
+    #[test]
+    fn test_handle_preview_request_allow() {
+        let generator = IcapResponseGenerator::default();
+        let preview_data = b"clean content";
+        let result = PreviewAnalysisResult::Allow;
+        
+        let response = generator.handle_preview_request(preview_data, Some("text/html"), result);
+        
+        assert_eq!(response.status, StatusCode::NO_CONTENT);
+        assert!(response.headers.contains_key("preview"));
+        assert_eq!(response.headers.get("preview").unwrap(), "13");
+    }
+
+    #[test]
+    fn test_handle_preview_request_block() {
+        let generator = IcapResponseGenerator::default();
+        let preview_data = b"malware content";
+        let result = PreviewAnalysisResult::Block("Malware detected".to_string());
+        
+        let response = generator.handle_preview_request(preview_data, Some("text/html"), result);
+        
+        assert_eq!(response.status, StatusCode::FORBIDDEN);
+        assert!(response.headers.contains_key("preview"));
+        assert_eq!(response.headers.get("preview").unwrap(), "15");
+        
+        let body_str = String::from_utf8_lossy(&response.body);
+        assert!(body_str.contains("Malware detected"));
+    }
+
+    #[test]
+    fn test_handle_preview_request_need_more_data() {
+        let generator = IcapResponseGenerator::default();
+        let preview_data = b"short";
+        let result = PreviewAnalysisResult::NeedMoreData(1024);
+        
+        let response = generator.handle_preview_request(preview_data, Some("text/html"), result);
+        
+        assert_eq!(response.status, StatusCode::CONTINUE);
+        assert!(response.headers.contains_key("preview"));
+        assert_eq!(response.headers.get("preview").unwrap(), "1024");
+    }
+
+    #[test]
+    fn test_handle_content_filter_preview_clean() {
+        let generator = IcapResponseGenerator::default();
+        let preview_data = b"clean content for filtering";
+        
+        let response = generator.handle_content_filter_preview(
+            preview_data,
+            Some("text/html"),
+            Some("https://example.com")
+        );
+        
+        assert_eq!(response.status, StatusCode::NO_CONTENT);
+        assert!(response.headers.contains_key("preview"));
+    }
+
+    #[test]
+    fn test_handle_content_filter_preview_malware() {
+        let generator = IcapResponseGenerator::default();
+        let preview_data = b"this contains malware signature";
+        
+        let response = generator.handle_content_filter_preview(
+            preview_data,
+            Some("text/html"),
+            Some("https://example.com")
+        );
+        
+        assert_eq!(response.status, StatusCode::FORBIDDEN);
+        assert!(response.headers.contains_key("preview"));
+        
+        let body_str = String::from_utf8_lossy(&response.body);
+        assert!(body_str.contains("Malware detected"));
+    }
+
+    #[test]
+    fn test_handle_content_filter_preview_inappropriate() {
+        let generator = IcapResponseGenerator::default();
+        let preview_data = b"this contains adult content";
+        
+        let response = generator.handle_content_filter_preview(
+            preview_data,
+            Some("text/html"),
+            Some("https://example.com")
+        );
+        
+        assert_eq!(response.status, StatusCode::FORBIDDEN);
+        assert!(response.headers.contains_key("preview"));
+        
+        let body_str = String::from_utf8_lossy(&response.body);
+        assert!(body_str.contains("Inappropriate content"));
+    }
+
+    #[test]
+    fn test_handle_content_filter_preview_blocked_url() {
+        let generator = IcapResponseGenerator::default();
+        let preview_data = b"clean content";
+        
+        let response = generator.handle_content_filter_preview(
+            preview_data,
+            Some("text/html"),
+            Some("https://malware.com/path")
+        );
+        
+        assert_eq!(response.status, StatusCode::FORBIDDEN);
+        assert!(response.headers.contains_key("preview"));
+        
+        let body_str = String::from_utf8_lossy(&response.body);
+        assert!(body_str.contains("URL is blocked"));
+    }
+
+    #[test]
+    fn test_contains_malware_signatures() {
+        let generator = IcapResponseGenerator::default();
+        
+        // Test malware detection
+        assert!(generator.contains_malware_signatures(b"this contains malware"));
+        assert!(generator.contains_malware_signatures(b"virus detected"));
+        assert!(generator.contains_malware_signatures(b"trojan horse"));
+        
+        // Test clean content
+        assert!(!generator.contains_malware_signatures(b"clean content"));
+        assert!(!generator.contains_malware_signatures(b"normal text"));
+    }
+
+    #[test]
+    fn test_contains_inappropriate_content() {
+        let generator = IcapResponseGenerator::default();
+        
+        // Test inappropriate content detection
+        assert!(generator.contains_inappropriate_content(b"adult content", Some("text/html")));
+        assert!(generator.contains_inappropriate_content(b"explicit material", Some("text/html")));
+        assert!(generator.contains_inappropriate_content(b"violence", Some("text/html")));
+        
+        // Test content type filtering
+        assert!(generator.contains_inappropriate_content(b"content", Some("adult/video")));
+        assert!(generator.contains_inappropriate_content(b"content", Some("explicit/audio")));
+        
+        // Test clean content
+        assert!(!generator.contains_inappropriate_content(b"clean content", Some("text/html")));
+        assert!(!generator.contains_inappropriate_content(b"normal text", Some("application/json")));
+    }
+
+    #[test]
+    fn test_is_blocked_url() {
+        let generator = IcapResponseGenerator::default();
+        
+        // Test blocked URLs
+        assert!(generator.is_blocked_url("https://malware.com/path"));
+        assert!(generator.is_blocked_url("http://phishing.net/evil"));
+        assert!(generator.is_blocked_url("https://spam.org/ads"));
+        
+        // Test clean URLs
+        assert!(!generator.is_blocked_url("https://example.com/path"));
+        assert!(!generator.is_blocked_url("https://google.com/search"));
+        assert!(!generator.is_blocked_url("https://github.com/user/repo"));
     }
 }
